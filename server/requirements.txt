@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+websockets
+python-dotenv
+httpx
+pydantic
+pydantic-settings
+deepgram-sdk
+cartesia
+groq
+redis
+tavily-python
+pyaudio
+numpy

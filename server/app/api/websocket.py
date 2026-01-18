@@ -1,37 +1,55 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from app.services.stt_service import STTService
+from app.services.tts_service import TTSService
+from app.services.llm_service import LLMService
+import asyncio
 import logging
+import json
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-
-manager = ConnectionManager()
-
 @router.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    logger.info("New WebSocket connection established")
+    await websocket.accept()
+    
+    stt_service = None
+    llm_service = LLMService()
+    tts_service = TTSService()
+    
+    async def stt_callback(transcript: str, is_final: bool):
+        if is_final:
+            logger.info(f"Final Transcript: {transcript}")
+            await websocket.send_json({"type": "transcript", "text": transcript, "is_user": True})
+            
+            # Start LLM and TTS pipeline
+            full_ai_text = ""
+            async for chunk in llm_service.get_response(transcript):
+                full_ai_text += chunk
+                await websocket.send_json({"type": "transcript_chunk", "text": chunk, "is_user": False})
+            
+            # Generate and stream audio
+            async for audio_chunk in tts_service.stream_audio(full_ai_text):
+                await websocket.send_bytes(audio_chunk)
+                
+    stt_service = STTService(stt_callback)
+    await stt_service.start()
+    
     try:
         while True:
-            # Receive audio as bytes
-            data = await websocket.receive_bytes()
-            # In Phase 1, we just log the received data size
-            # Audio pipeline will be implemented in Day 2
-            logger.debug(f"Received {len(data)} bytes of audio data")
+            data = await websocket.receive()
+            if "bytes" in data:
+                await stt_service.send_audio(data["bytes"])
+            elif "text" in data:
+                # Handle control messages
+                msg = json.loads(data["text"])
+                if msg.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        logger.info("WebSocket connection closed")
+        logger.info("Client disconnected")
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        manager.disconnect(websocket)
+        logger.error(f"WebSocket Error: {e}")
+    finally:
+        if stt_service:
+            await stt_service.stop()

@@ -9,6 +9,8 @@ import json
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+from app.utils.audio_utils import process_audio_chunk
+
 @router.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -22,13 +24,11 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.info(f"Final Transcript: {transcript}")
             await websocket.send_json({"type": "transcript", "text": transcript, "is_user": True})
             
-            # Start LLM and TTS pipeline
             full_ai_text = ""
             async for chunk in llm_service.get_response(transcript):
                 full_ai_text += chunk
                 await websocket.send_json({"type": "transcript_chunk", "text": chunk, "is_user": False})
             
-            # Generate and stream audio
             async for audio_chunk in tts_service.stream_audio(full_ai_text):
                 await websocket.send_bytes(audio_chunk)
                 
@@ -39,7 +39,9 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             data = await websocket.receive()
             if "bytes" in data:
-                await stt_service.send_audio(data["bytes"])
+                # Apply custom noise suppression/filtering
+                processed_audio = process_audio_chunk(data["bytes"])
+                await stt_service.send_audio(processed_audio)
             elif "text" in data:
                 # Handle control messages
                 msg = json.loads(data["text"])

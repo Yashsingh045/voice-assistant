@@ -14,7 +14,7 @@ const App = () => {
   useEffect(() => {
     // Connect to WebSocket
     ws.current = new WebSocket('ws://localhost:8000/ws/chat');
-    
+
     ws.current.onmessage = async (event) => {
       if (typeof event.data === 'string') {
         const data = JSON.parse(event.data);
@@ -42,11 +42,11 @@ const App = () => {
     isPlaying.current = true;
     setStatus('Speaking');
     const data = audioQueue.current.shift();
-    
+
     if (!audioContext.current) {
       audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
     }
-    
+
     // Simple way to play raw PCM 16-bit 44.1kHz from Cartesia
     const buffer = await audioContext.current.decodeAudioData(createWavHeader(data));
     const source = audioContext.current.createBufferSource();
@@ -86,9 +86,24 @@ const App = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioContext.current = new AudioContext({ sampleRate: 16000 });
-      const source = audioContext.current.createMediaStreamSource(stream);
-      const processor = audioContext.current.createScriptProcessor(4096, 1, 1);
 
+      // Load and add VAD AudioWorklet
+      await audioContext.current.audioWorklet.addModule('/vad-processor.js');
+      const vadNode = new AudioWorkletNode(audioContext.current, 'vad-processor');
+
+      const source = audioContext.current.createMediaStreamSource(stream);
+
+      vadNode.port.onmessage = (event) => {
+        if (event.data.type === 'VAD_START') {
+          setStatus('Listening');
+        } else if (event.data.type === 'VAD_END') {
+          setStatus('Thinking');
+          // Optional: You could send a 'end-of-turn' signal to backend here
+        }
+      };
+
+      const processor = audioContext.current.createScriptProcessor(4096, 1, 1);
+      source.connect(vadNode);
       source.connect(processor);
       processor.connect(audioContext.current.destination);
 
@@ -103,7 +118,7 @@ const App = () => {
         }
       };
 
-      mediaRecorder.current = { stream, source, processor };
+      mediaRecorder.current = { stream, source, processor, vadNode };
       setIsListening(true);
       setStatus('Listening');
     } catch (err) {
@@ -116,9 +131,10 @@ const App = () => {
       mediaRecorder.current.stream.getTracks().forEach(t => t.stop());
       mediaRecorder.current.source.disconnect();
       mediaRecorder.current.processor.disconnect();
+      mediaRecorder.current.vadNode.disconnect();
     }
     setIsListening(false);
-    setStatus('Thinking');
+    setStatus('Ready');
   };
 
   return (
@@ -143,9 +159,8 @@ const App = () => {
           )}
           {transcripts.map((t, i) => (
             <div key={i} className={`flex ${t.is_user ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] p-4 rounded-2xl ${
-                t.is_user ? 'bg-blue-600 rounded-tr-none' : 'bg-slate-800 rounded-tl-none'
-              }`}>
+              <div className={`max-w-[80%] p-4 rounded-2xl ${t.is_user ? 'bg-blue-600 rounded-tr-none' : 'bg-slate-800 rounded-tl-none'
+                }`}>
                 {t.text}
               </div>
             </div>
@@ -155,9 +170,8 @@ const App = () => {
         <div className="flex flex-col items-center gap-6 pb-8">
           <button
             onClick={isListening ? stopListening : startListening}
-            className={`p-8 rounded-full transition-all transform hover:scale-105 active:scale-95 ${
-              isListening ? 'bg-red-500 shadow-lg shadow-red-500/20' : 'bg-blue-600 shadow-lg shadow-blue-500/20'
-            }`}
+            className={`p-8 rounded-full transition-all transform hover:scale-105 active:scale-95 ${isListening ? 'bg-red-500 shadow-lg shadow-red-500/20' : 'bg-blue-600 shadow-lg shadow-blue-500/20'
+              }`}
           >
             {isListening ? <MicOff size={32} /> : <Mic size={32} />}
           </button>

@@ -20,6 +20,18 @@ const App = () => {
         const data = JSON.parse(event.data);
         if (data.type === 'transcript') {
           setTranscripts(prev => [...prev, { text: data.text, is_user: data.is_user }]);
+        } else if (data.type === 'status') {
+          setStatus(data.text);
+        } else if (data.type === 'transcript_chunk') {
+          // Handle streaming chunks if we want to show them real-time
+          setTranscripts(prev => {
+            const last = prev[prev.length - 1];
+            if (last && !last.is_user) {
+              return [...prev.slice(0, -1), { ...last, text: last.text + data.text }];
+            } else {
+              return [...prev, { text: data.text, is_user: false }];
+            }
+          });
         }
       } else {
         // Audio data (blob)

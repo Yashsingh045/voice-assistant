@@ -5,6 +5,7 @@ from app.services.llm_service import LLMService
 import asyncio
 import logging
 import json
+import re
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -24,13 +25,38 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.info(f"Final Transcript: {transcript}")
             await websocket.send_json({"type": "transcript", "text": transcript, "is_user": True})
             
-            full_ai_text = ""
+            sentence_buffer = ""
             async for chunk in llm_service.get_response(transcript):
-                full_ai_text += chunk
+                # Check for status messages
+                if chunk.startswith("[STATUS: ") and chunk.endswith("]"):
+                    status_text = chunk[9:-1]
+                    await websocket.send_json({"type": "status", "text": status_text})
+                    continue
+
                 await websocket.send_json({"type": "transcript_chunk", "text": chunk, "is_user": False})
-            
-            async for audio_chunk in tts_service.stream_audio(full_ai_text):
-                await websocket.send_bytes(audio_chunk)
+                sentence_buffer += chunk
+                
+                # If we have a complete sentence, stream it to TTS
+                if any(punct in chunk for punct in [".", "!", "?", "\n"]):
+                    sentences = re.split(r'(?<=[.!?])\s+', sentence_buffer)
+                    if len(sentences) > 1:
+                        # The last part might be an incomplete sentence
+                        for s in sentences[:-1]:
+                            if s.strip():
+                                async for audio_chunk in tts_service.stream_audio(s.strip()):
+                                    await websocket.send_bytes(audio_chunk)
+                        sentence_buffer = sentences[-1]
+                    elif "\n" in chunk:
+                         # Handle newlines as sentence breaks
+                         if sentence_buffer.strip():
+                            async for audio_chunk in tts_service.stream_audio(sentence_buffer.strip()):
+                                await websocket.send_bytes(audio_chunk)
+                            sentence_buffer = ""
+
+            # Stream any remaining text
+            if sentence_buffer.strip():
+                async for audio_chunk in tts_service.stream_audio(sentence_buffer.strip()):
+                    await websocket.send_bytes(audio_chunk)
                 
     stt_service = STTService(stt_callback)
     await stt_service.start()

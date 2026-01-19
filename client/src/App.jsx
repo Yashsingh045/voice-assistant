@@ -10,6 +10,7 @@ const App = () => {
   const audioContext = useRef(null);
   const audioQueue = useRef([]);
   const isPlaying = useRef(false);
+  const currentSource = useRef(null);
 
   useEffect(() => {
     // Connect to WebSocket
@@ -64,7 +65,11 @@ const App = () => {
     const source = audioContext.current.createBufferSource();
     source.buffer = buffer;
     source.connect(audioContext.current.destination);
-    source.onended = playNextAudio;
+    source.onended = () => {
+      currentSource.current = null;
+      playNextAudio();
+    };
+    currentSource.current = source;
     source.start();
   };
 
@@ -108,9 +113,20 @@ const App = () => {
       vadNode.port.onmessage = (event) => {
         if (event.data.type === 'VAD_START') {
           setStatus('Listening');
+          // Barge-in logic: stop audio playback and notify backend
+          if (isPlaying.current || audioQueue.current.length > 0) {
+            audioQueue.current = [];
+            if (audioContext.current) {
+              // We could suspend/resume or just let scripts finish
+              // However, a more direct way is to stop current source
+              // Let's add a reference to current source
+            }
+            if (ws.current.readyState === WebSocket.OPEN) {
+              ws.current.send(JSON.stringify({ type: 'barge-in' }));
+            }
+          }
         } else if (event.data.type === 'VAD_END') {
           setStatus('Thinking');
-          // Optional: You could send a 'end-of-turn' signal to backend here
         }
       };
 

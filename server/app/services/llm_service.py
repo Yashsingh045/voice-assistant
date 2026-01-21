@@ -1,8 +1,10 @@
 from groq import AsyncGroq
 from app.core.config import settings
 from app.services.search_service import SearchService
+from app.services.cache_service import CacheService
 import logging
 import re
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +12,7 @@ class LLMService:
     def __init__(self):
         self.client = AsyncGroq(api_key=settings.GROQ_API_KEY)
         self.search_service = SearchService()
+        self.cache_service = CacheService()
         self.system_prompt = (
             "You are a helpful and concise voice assistant. Give short, conversational answers suitable for real-time speech. "
             "If you need current information from the web to answer a question, start your response with '[SEARCH: query]' "
@@ -22,10 +25,19 @@ class LLMService:
         logger.info(f"System prompt updated: {prompt[:50]}...")
 
     async def get_response(self, user_input: str, history: list = []):
+        # Check cache first (ignore if history exists to maintain context)
+        if not history:
+            cached = self.cache_service.get_cached_response(user_input, self.system_prompt)
+            if cached:
+                logger.info(f"Cache hit for query: {user_input}")
+                yield cached
+                return
+
         messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(history)
         messages.append({"role": "user", "content": user_input})
 
+        full_response = ""
         try:
             # First attempt to see if search is needed
             completion = await self.client.chat.completions.create(
@@ -70,7 +82,12 @@ class LLMService:
             if search_match:
                 async for chunk in completion:
                     if content := chunk.choices[0].delta.content:
+                        full_response += content
                         yield content
+            
+            # Cache the response if it was a direct hit (no history, no search)
+            if not history and not search_match and full_response:
+                self.cache_service.set_cached_response(user_input, full_response, self.system_prompt)
                     
         except Exception as e:
             logger.error(f"Groq Error: {e}")

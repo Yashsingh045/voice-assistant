@@ -38,51 +38,52 @@ async def websocket_endpoint(websocket: WebSocket):
                     if interrupt_event.is_set():
                         logger.info("Interrupted during LLM generation")
                         break
-                # Check for status messages
-                if chunk.startswith("[STATUS: ") and chunk.endswith("]"):
-                    status_text = chunk[9:-1]
-                    await websocket.send_json({"type": "status", "text": status_text})
-                    continue
 
-                await websocket.send_json({"type": "transcript_chunk", "text": chunk, "is_user": False})
-                sentence_buffer += chunk
-                
-                # If we have a complete sentence, stream it to TTS
-                if any(punct in chunk for punct in [".", "!", "?", "\n"]):
-                    sentences = re.split(r'(?<=[.!?])\s+', sentence_buffer)
-                    if len(sentences) > 1:
-                        # The last part might be an incomplete sentence
-                        for s in sentences[:-1]:
-                            if s.strip():
-                                async for audio_chunk in tts_service.stream_audio(s.strip()):
+                    # Check for status messages
+                    if chunk.startswith("[STATUS: ") and chunk.endswith("]"):
+                        status_text = chunk[9:-1]
+                        await websocket.send_json({"type": "status", "text": status_text})
+                        continue
+
+                    await websocket.send_json({"type": "transcript_chunk", "text": chunk, "is_user": False})
+                    sentence_buffer += chunk
+                    
+                    # If we have a complete sentence, stream it to TTS
+                    if any(punct in chunk for punct in [".", "!", "?", "\n"]):
+                        sentences = re.split(r'(?<=[.!?])\s+', sentence_buffer)
+                        if len(sentences) > 1:
+                            # The last part might be an incomplete sentence
+                            for s in sentences[:-1]:
+                                if s.strip():
+                                    async for audio_chunk in tts_service.stream_audio(s.strip()):
+                                        if interrupt_event.is_set():
+                                            logger.info("Interrupted during TTS streaming")
+                                            break
+                                        await websocket.send_bytes(audio_chunk)
+                            if interrupt_event.is_set(): break
+                            sentence_buffer = sentences[-1]
+                        elif "\n" in chunk:
+                             # Handle newlines as sentence breaks
+                             if sentence_buffer.strip():
+                                async for audio_chunk in tts_service.stream_audio(sentence_buffer.strip()):
                                     if interrupt_event.is_set():
                                         logger.info("Interrupted during TTS streaming")
                                         break
                                     await websocket.send_bytes(audio_chunk)
-                        if interrupt_event.is_set(): break
-                        sentence_buffer = sentences[-1]
-                    elif "\n" in chunk:
-                         # Handle newlines as sentence breaks
-                         if sentence_buffer.strip():
-                            async for audio_chunk in tts_service.stream_audio(sentence_buffer.strip()):
-                                if interrupt_event.is_set():
-                                    logger.info("Interrupted during TTS streaming")
-                                    break
-                                await websocket.send_bytes(audio_chunk)
-                            sentence_buffer = ""
+                                sentence_buffer = ""
 
-            # Stream any remaining text
-            if not interrupt_event.is_set() and sentence_buffer.strip():
-                async for audio_chunk in tts_service.stream_audio(sentence_buffer.strip()):
-                    if interrupt_event.is_set():
-                        logger.info("Interrupted during TTS streaming")
-                        break
-                    await websocket.send_bytes(audio_chunk)
-            elif interrupt_event.is_set():
-                logger.info("Response abandoned due to interruption")
+                # Stream any remaining text
+                if not interrupt_event.is_set() and sentence_buffer.strip():
+                    async for audio_chunk in tts_service.stream_audio(sentence_buffer.strip()):
+                        if interrupt_event.is_set():
+                            logger.info("Interrupted during TTS streaming")
+                            break
+                        await websocket.send_bytes(audio_chunk)
+                elif interrupt_event.is_set():
+                    logger.info("Response abandoned due to interruption")
+                    
+                interrupt_event.clear()
                 
-            interrupt_event.clear()
-            
             except Exception as e:
                 logger.error(f"Error in stt_callback: {e}")
                 interrupt_event.clear()
@@ -102,6 +103,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 msg = json.loads(data["text"])
                 if msg.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
+                elif msg.get("type") == "barge-in":
+                    logger.info("Barge-in requested by client")
+                    interrupt_event.set()
+                    await asyncio.sleep(0.05)
+                    interrupt_event.clear()
                     
     except WebSocketDisconnect:
         logger.info("Client disconnected")

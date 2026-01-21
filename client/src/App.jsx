@@ -116,10 +116,13 @@ const App = () => {
           // Barge-in logic: stop audio playback and notify backend
           if (isPlaying.current || audioQueue.current.length > 0) {
             audioQueue.current = [];
-            if (audioContext.current) {
-              // We could suspend/resume or just let scripts finish
-              // However, a more direct way is to stop current source
-              // Let's add a reference to current source
+            if (currentSource.current) {
+              try {
+                currentSource.current.stop();
+              } catch (e) {
+                // Already stopped
+              }
+              currentSource.current = null;
             }
             if (ws.current.readyState === WebSocket.OPEN) {
               ws.current.send(JSON.stringify({ type: 'barge-in' }));

@@ -127,6 +127,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
                     interrupt_event.set()
                     await asyncio.sleep(0.05)
                     interrupt_event.clear()
+                elif msg.get("type") == "update_context":
+                    new_prompt = msg.get("text")
+                    if new_prompt:
+                        llm_service.set_system_prompt(new_prompt)
+                        await websocket.send_json({"type": "status", "text": "Instructions updated."})
                     
     except WebSocketDisconnect:
         logger.info("Client disconnected")

@@ -17,6 +17,10 @@ class LLMService:
             "Only use search if necessary."
         )
 
+    def set_system_prompt(self, prompt: str):
+        self.system_prompt = prompt
+        logger.info(f"System prompt updated: {prompt[:50]}...")
+
     async def get_response(self, user_input: str, history: list = []):
         messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(history)

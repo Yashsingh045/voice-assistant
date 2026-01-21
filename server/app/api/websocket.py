@@ -2,7 +2,9 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.services.stt_service import STTService
 from app.services.tts_service import TTSService
 from app.services.llm_service import LLMService
+from app.services.history_service import HistoryService
 import asyncio
+import uuid
 import logging
 import json
 import re
@@ -13,18 +15,28 @@ logger = logging.getLogger(__name__)
 from app.utils.audio_utils import process_audio_chunk
 
 @router.websocket("/ws/chat")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
     await websocket.accept()
+    
+    if not session_id:
+        session_id = str(uuid.uuid4())
     
     stt_service = None
     llm_service = LLMService()
     tts_service = TTSService()
+    history_service = HistoryService()
     
     interrupt_event = asyncio.Event()
     
     async def stt_callback(transcript: str, is_final: bool):
         if is_final:
-            logger.info(f"Final Transcript: {transcript}")
+            logger.info(f"Final Transcript: {transcript} for session: {session_id}")
+            # Save user message to history
+            history_service.add_message(session_id, "user", transcript)
+            
+            # Fetch full history for LLM context
+            history = history_service.get_history(session_id)
+            
             # Signal interruption to any ongoing response
             interrupt_event.set()
             await asyncio.sleep(0.1) # Small delay to let current loops settle
@@ -33,8 +45,10 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_json({"type": "transcript", "text": transcript, "is_user": True})
             
             sentence_buffer = ""
+            full_ai_response = ""
             try:
-                async for chunk in llm_service.get_response(transcript):
+                # pass history to llm_service
+                async for chunk in llm_service.get_response(transcript, history=history[:-1]): # Exclude the message we just added as it's passed as user_input
                     if interrupt_event.is_set():
                         logger.info("Interrupted during LLM generation")
                         break
@@ -47,6 +61,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     await websocket.send_json({"type": "transcript_chunk", "text": chunk, "is_user": False})
                     sentence_buffer += chunk
+                    full_ai_response += chunk
                     
                     # If we have a complete sentence, stream it to TTS
                     if any(punct in chunk for punct in [".", "!", "?", "\n"]):
@@ -81,6 +96,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_bytes(audio_chunk)
                 elif interrupt_event.is_set():
                     logger.info("Response abandoned due to interruption")
+                
+                # Save AI response to history
+                if full_ai_response:
+                    history_service.add_message(session_id, "assistant", full_ai_response)
                     
                 interrupt_event.clear()
                 

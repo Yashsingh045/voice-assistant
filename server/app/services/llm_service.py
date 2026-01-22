@@ -39,15 +39,22 @@ class LLMService:
 
         full_response = ""
         try:
-            # First attempt to see if search is needed
-            completion = await self.client.chat.completions.create(
-                model="llama3-70b-8192",
-                messages=messages,
-                stream=False, # Use non-streaming for the potential search trigger check
-                max_tokens=100,
-            )
-            
-            response_text = completion.choices[0].message.content
+            # First attempt to see if search is needed (with retry)
+            response_text = ""
+            for attempt in range(2):
+                try:
+                    completion = await self.client.chat.completions.create(
+                        model="llama3-70b-8192",
+                        messages=messages,
+                        stream=False,
+                        max_tokens=100,
+                    )
+                    response_text = completion.choices[0].message.content
+                    break
+                except Exception as e:
+                    if attempt == 1: raise e
+                    logger.warning(f"Groq primary call attempt {attempt+1} failed: {e}")
+                    await asyncio.sleep(1)
             
             # Check for search trigger
             search_match = re.search(r'\[SEARCH:\s*(.*?)\]', response_text)

@@ -184,6 +184,13 @@ const App = () => {
       </header>
 
       <main className="w-full max-w-2xl flex-1 flex flex-col gap-6 overflow-hidden">
+        <div className="text-center py-4">
+          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+            Sonic AI
+          </h1>
+          <p className="text-slate-400 mt-2 text-sm uppercase tracking-widest opacity-60">High-Performance Voice Assistant</p>
+        </div>
+
         <div className="flex-1 overflow-y-auto pr-4 space-y-4 custom-scrollbar">
           {transcripts.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-slate-500">

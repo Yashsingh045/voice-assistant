@@ -1,24 +1,35 @@
-# AI Voice Assistant
+# Sonic AI - Low-Latency Voice Assistant
 
-A production-ready, low-latency voice assistant built with Python (FastAPI) and React.
+A production-ready voice assistant pipeline optimized for low latency and high interactivity.
 
-## Features
-- **Low Latency**: Sub-second response times using Groq, Deepgram, and Cartesia.
-- **Custom Pipeline**: In-house VAD and Noise Suppression.
-- **Multi-User**: Scalable WebSocket-based session management.
-- **Real-time Context**: Dynamic mid-session instruction updates.
+## Key Features
+- **Ultra-Low Latency**: Sub-second T-FAP using Groq, Deepgram, and Cartesia with sentence-buffering streaming.
+- **Barge-in Capability**: Interrupt the AI at any time. The system detects user voice start and instantly stops playback and generation.
+- **Semantic Caching**: Redis-backed exact-match caching for near-instant responses to common queries.
+- **Multi-User History**: Persistent chat sessions stored in Redis, isolated by `session_id`.
+- **Real-time Context**: Update the assistant's persona or instructions mid-session via WebSocket messages.
+- **Performance Dashboard**: Integrated real-time latency monitoring in the UI.
 
 ## Architecture
 - **Backend**: FastAPI (Python)
-- **Frontend**: React (Vite) + Tailwind CSS
-- **STT**: Deepgram
-- **LLM**: Groq (Llama 3)
-- **TTS**: Cartesia
+- **Frontend**: React (Vite) + Vanilla CSS
+- **STT**: Deepgram Nova-2
+- **LLM**: Groq (Llama 3 70B)
+- **TTS**: Cartesia Sonic
+- **Memory/Cache**: Redis
 
-## Setup
-1. Clone the repository.
-2. Install server dependencies: `pip install -r server/requirements.txt`.
-3. Install client dependencies: `cd client && npm install`.
-4. Configure `.env` in the `server` directory.
-5. Run the server: `python server/app/main.py`.
-6. Run the client: `npm run dev`.
+## Getting Started
+
+### Prerequisites
+- Docker & Docker Compose
+- API Keys: Deepgram, Groq, Cartesia, Tavily
+
+### Quick Start (Docker)
+1. Configure your keys in `server/.env`.
+2. Run: `docker-compose up --build`
+3. Access at `http://localhost:3000`
+
+### Local Development
+1. **Server**: `cd server && pip install -r requirements.txt && python app/main.py`
+2. **Client**: `cd client && npm install && npm run dev`
+

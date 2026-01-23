@@ -3,6 +3,7 @@ from app.services.stt_service import STTService
 from app.services.tts_service import TTSService
 from app.services.llm_service import LLMService
 from app.services.history_service import HistoryService
+from app.utils.metrics import MetricsTracker
 import asyncio
 import uuid
 import logging
@@ -25,12 +26,16 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
     llm_service = LLMService()
     tts_service = TTSService()
     history_service = HistoryService()
+    metrics = MetricsTracker()
     
     interrupt_event = asyncio.Event()
     
     async def stt_callback(transcript: str, is_final: bool):
         if is_final:
             logger.info(f"Final Transcript: {transcript} for session: {session_id}")
+            metrics.start_timing("total_turnaround")
+            metrics.start_timing("llm_generation")
+            
             # Save user message to history
             history_service.add_message(session_id, "user", transcript)
             
@@ -100,6 +105,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
                 # Save AI response to history
                 if full_ai_response:
                     history_service.add_message(session_id, "assistant", full_ai_response)
+                
+                metrics.stop_timing("llm_generation")
+                metrics.stop_timing("total_turnaround")
+                await websocket.send_json({"type": "metrics", "data": metrics.get_all()})
                     
                 interrupt_event.clear()
                 

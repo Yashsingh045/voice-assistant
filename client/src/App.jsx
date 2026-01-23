@@ -5,6 +5,7 @@ const App = () => {
   const [isListening, setIsListening] = useState(false);
   const [transcripts, setTranscripts] = useState([]);
   const [status, setStatus] = useState('Idle');
+  const [metrics, setMetrics] = useState(null);
   const ws = useRef(null);
   const mediaRecorder = useRef(null);
   const audioContext = useRef(null);
@@ -33,6 +34,8 @@ const App = () => {
               return [...prev, { text: data.text, is_user: false }];
             }
           });
+        } else if (data.type === 'metrics') {
+          setMetrics(data.data);
         }
       } else {
         // Audio data (blob)
@@ -209,6 +212,20 @@ const App = () => {
           <p className="text-slate-400 text-sm">
             {isListening ? 'Tap to stop' : 'Tap to start talking'}
           </p>
+
+          {metrics && (
+            <div className="w-full mt-4 p-4 rounded-xl bg-slate-900/50 border border-slate-800 flex justify-around items-center gap-4 animate-in fade-in slide-in-from-bottom-2">
+              <div className="text-center">
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">LLM Latency</p>
+                <p className="text-lg font-mono text-cyan-400">{metrics.llm_generation?.toFixed(0)}<span className="text-xs ml-0.5">ms</span></p>
+              </div>
+              <div className="h-8 w-px bg-slate-800" />
+              <div className="text-center">
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Loop</p>
+                <p className="text-lg font-mono text-blue-400">{metrics.total_turnaround?.toFixed(0)}<span className="text-xs ml-0.5">ms</span></p>
+              </div>
+            </div>
+          )}
         </div>
       </main>
 

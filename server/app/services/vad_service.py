@@ -26,7 +26,7 @@ class VADService:
         self.frame_size = int(sample_rate * self.frame_duration_ms / 1000)
         
         # Energy-based VAD fallback parameters
-        self.energy_threshold = 100  # Lowered for better sensitivity
+        self.energy_threshold = 30  # More sensitive for quiet microphones
         
         # State tracking for logging
         self.last_speech_state = None
@@ -90,10 +90,13 @@ class VADService:
             if chunk_len < bytes_per_frame:
                 # Not enough data, consider it silence
                 return False
-            
-            # Process the first complete frame
-            frame = audio_chunk[:bytes_per_frame]
-            return self.vad.is_speech(frame, self.sample_rate)
+
+            # Scan all full frames in this chunk; treat as speech if any frame is speech.
+            for i in range(0, chunk_len - bytes_per_frame + 1, bytes_per_frame):
+                frame = audio_chunk[i : i + bytes_per_frame]
+                if self.vad.is_speech(frame, self.sample_rate):
+                    return True
+            return False
             
         except Exception as e:
             logger.error(f"WebRTC VAD error: {e}, falling back to energy-based detection")

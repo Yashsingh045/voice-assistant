@@ -7,6 +7,11 @@ logger = logging.getLogger(__name__)
 class MetricsTracker:
     def __init__(self):
         self.metrics = {}
+        self.tokens_count = 0
+        self.model_name = "Llama 3.3 70B" # Default
+
+    def set_model(self, model: str):
+        self.model_name = model
 
     def start_timing(self, name: str):
         self.metrics[name] = {"start": time.time()}
@@ -18,8 +23,21 @@ class MetricsTracker:
             return duration
         return 0
 
+    def add_tokens(self, count: int):
+        self.tokens_count += count
+
+    def get_tps(self):
+        # Calculate TPS based on llm_generation duration
+        gen_duration = self.metrics.get("llm_generation", {}).get("duration", 0)
+        if gen_duration > 0:
+            return (self.tokens_count / (gen_duration / 1000))
+        return 0
+
     def get_all(self):
-        return {k: v.get("duration", 0) for k, v in self.metrics.items()}
+        data = {k: v.get("duration", 0) for k, v in self.metrics.items()}
+        data["tps"] = self.get_tps()
+        data["model"] = self.model_name
+        return data
 
 def time_it(name: str):
     def decorator(func):

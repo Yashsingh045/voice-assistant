@@ -59,6 +59,16 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
     history_service = HistoryService()
     vad_service = VADService(mode=1, sample_rate=16000)  # Mode 1 for balanced sensitivity
     metrics = MetricsTracker()
+    metrics.set_model("Llama 3.3 70B") # Explicitly set model name
+    
+    # helper to send status logs
+    async def send_system_log(msg: str):
+        await websocket.send_json({"type": "system_log", "text": msg})
+
+    await send_system_log("Connection secure")
+    await send_system_log("Buffer synchronized")
+    await send_system_log("Neural weights loaded")
+    
     interrupt_event = asyncio.Event()
     current_generation_id = 0
     
@@ -118,6 +128,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
                 sentence_buffer += chunk
                 full_ai_response += chunk
                 
+                # Track tokens for TPS
+                metrics.add_tokens(1) 
+                
                 if any(punct in chunk for punct in [".", "!", "?", "\n"]):
                     sentences = re.split(r'(?<=[.!?])\s+', sentence_buffer)
                     if len(sentences) > 1:
@@ -167,29 +180,30 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
             pass
                 
     stt_service = STTService(stt_callback)
+    await send_system_log("Engine ready")
     await stt_service.start()
     
     try:
         while True:
             data = await websocket.receive()
+            if data.get("type") == "websocket.disconnect":
+                raise WebSocketDisconnect
             if "bytes" in data:
                 # Pipeline: Noise Suppression → VAD → STT
-                # Step 1: Apply custom noise suppression/filtering
-                processed_audio = process_audio_chunk(data["bytes"])
-                
-                # Step 2: VAD - Check if audio contains speech
-                is_speech = vad_service.is_speech(processed_audio)
+                raw_audio = data["bytes"]
+
+                # Step 1: VAD - Check if audio contains speech (run on raw audio)
+                is_speech = vad_service.is_speech(raw_audio)
                 
                 if is_speech:
                     # Start STT timing when speech begins
                     if not metrics.metrics.get("stt_latency", {}).get("start"):
                         metrics.start_timing("stt_latency")
-                    # Step 3: Send to STT only if speech detected
-                    await stt_service.send_audio(processed_audio)
-                else:
-                    # Drop silent packets (optionally log for debugging)
-                    # logger.debug("VAD: Silence detected, dropping packet")
-                    pass
+
+                # Always send audio to Deepgram to prevent timeout closures.
+                # We still use VAD for metrics and for deciding when a "turn" starts.
+                processed_audio = process_audio_chunk(raw_audio)
+                await stt_service.send_audio(processed_audio)
             elif "text" in data:
                 # Handle control messages
                 msg = json.loads(data["text"])

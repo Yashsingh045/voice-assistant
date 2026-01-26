@@ -1,6 +1,6 @@
 import numpy as np
 
-def apply_noise_gate(audio_data: np.ndarray, threshold: float = 0.02) -> np.ndarray:
+def apply_noise_gate(audio_data: np.ndarray, threshold: float = 0.008) -> np.ndarray:
     """
     Applies a simple noise gate to the audio signal.
     Samples with amplitude below the threshold are zeroed out.
@@ -11,8 +11,9 @@ def apply_noise_gate(audio_data: np.ndarray, threshold: float = 0.02) -> np.ndar
     else:
         float_data = audio_data
 
-    # Apply gate
-    float_data[np.abs(float_data) < threshold] = 0
+    # Apply a soft gate (attenuate instead of hard-zero) to avoid killing quiet speech
+    mask = np.abs(float_data) < threshold
+    float_data[mask] = float_data[mask] * 0.2
     
     # Convert back to int16 if needed
     if audio_data.dtype == np.int16:

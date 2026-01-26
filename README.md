@@ -50,7 +50,7 @@ User Audio → [Noise Suppression] → [Custom VAD] → [Deepgram STT] → [Groq
     python3 -m venv venv
     source venv/bin/activate
     pip install -r requirements.txt
-    python app/main.py
+    PYTHONPATH=. venv/bin/python app/main.py
     ```
 3.  **Frontend Setup**:
     ```bash

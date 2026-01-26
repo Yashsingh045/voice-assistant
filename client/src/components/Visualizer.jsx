@@ -1,39 +1,33 @@
 import React from 'react';
 
-const Visualizer = ({ isListening, status }) => {
-    const bars = Array.from({ length: 40 }, (_, i) => i);
+const Visualizer = ({ audioData, isListening, color = 'var(--accent-cyan)' }) => {
+    // Use 40 bars as in the reference
+    const bars = Array.from({ length: 40 });
 
     return (
-        <div className="relative w-full h-80 flex items-center justify-center">
-            {/* Main Glowing Orb */}
-            <div className={`relative w-48 h-48 rounded-full transition-all duration-1000 ${status === 'Speaking' ? 'bg-blue-500 scale-110 shadow-[0_0_80px_rgba(59,130,246,0.6)]' :
-                    status === 'Listening' ? 'bg-purple-500 scale-105 shadow-[0_0_60px_rgba(168,85,247,0.4)]' :
-                        'bg-slate-800 scale-100 shadow-none'
-                }`}>
-                <div className="absolute inset-0 rounded-full animate-orb-glow opacity-50" />
+        <div className="flex items-center justify-center gap-[3px] h-32 w-full max-w-lg mx-auto overflow-hidden">
+            {bars.map((_, i) => {
+                // Calculate a responsive height based on audio data or just a pulse when listening
+                const rawValue = audioData ? audioData[i % audioData.length] : 0;
+                const scale = isListening ? Math.max(0.1, rawValue / 128) : 0.05;
+                const height = `${scale * 100}%`;
 
-                {/* Waveform Bars */}
-                <div className="absolute inset-0 flex items-center justify-center gap-1.5 pt-12">
-                    {bars.map((i) => {
-                        const isActive = status === 'Speaking' || status === 'Listening';
-                        // Create a symmetric wave pattern
-                        const height = isActive ? (30 + Math.sin(i * 0.5) * 20 + Math.random() * 15) : 4;
+                // Multi-colored bars as in reference (alternating blue/purple)
+                const barColor = i % 2 === 0 ? 'var(--accent-blue)' : 'var(--accent-purple)';
 
-                        return (
-                            <div
-                                key={i}
-                                className={`waveform-bar ${!isActive ? 'quiet' : ''}`}
-                                style={{
-                                    animationDelay: `${i * 0.1}s`,
-                                    animationDuration: isActive ? `${0.8 + Math.random() * 0.4}s` : '2s',
-                                    '--wave-height': `${height}px`,
-                                    opacity: isActive ? 1 : 0.2,
-                                }}
-                            />
-                        );
-                    })}
-                </div>
-            </div>
+                return (
+                    <div
+                        key={i}
+                        className="visualizer-bar"
+                        style={{
+                            height,
+                            backgroundColor: barColor,
+                            opacity: isListening ? 0.4 + scale * 0.6 : 0.1,
+                            boxShadow: isListening && scale > 0.5 ? `0 0 15px ${barColor}` : 'none'
+                        }}
+                    />
+                );
+            })}
         </div>
     );
 };

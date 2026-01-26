@@ -1,35 +1,64 @@
-# Sonic AI - Low-Latency Voice Assistant
+# Production-Ready Voice Assistant
 
-A production-ready voice assistant pipeline optimized for low latency and high interactivity.
+A low-latency, real-time voice assistant built with a cascaded pipeline. Features include custom noise suppression, VAD, real-time transcription, and a modular architecture supporting concurrent users.
 
-## Key Features
-- **Ultra-Low Latency**: Sub-second T-FAP using Groq, Deepgram, and Cartesia with sentence-buffering streaming.
-- **Barge-in Capability**: Interrupt the AI at any time. The system detects user voice start and instantly stops playback and generation.
-- **Semantic Caching**: Redis-backed exact-match caching for near-instant responses to common queries.
-- **Multi-User History**: Persistent chat sessions stored in Redis, isolated by `session_id`.
-- **Real-time Context**: Update the assistant's persona or instructions mid-session via WebSocket messages.
-- **Performance Dashboard**: Integrated real-time latency monitoring in the UI.
+## 🚀 Architecture Overview
 
-## Architecture
-- **Backend**: FastAPI (Python)
-- **Frontend**: React (Vite) + Vanilla CSS
-- **STT**: Deepgram Nova-2
-- **LLM**: Groq (Llama 3 70B)
-- **TTS**: Cartesia Sonic
-- **Memory/Cache**: Redis
+### The Cascade Pipeline
+```
+User Audio → [Noise Suppression] → [Custom VAD] → [Deepgram STT] → [Groq/Gemini LLM + Tools] → [Cartesia TTS] → AI Audio
+```
 
-## Getting Started
+1.  **Noise Suppression**: Custom RMS-based filtering and high-pass filters implemented in `audio_utils.py` and `vad-processor.js`.
+2.  **Custom VAD**: Implemented via `AudioWorkletProcessor` on the client side for ultra-low latency detection of speech start/end.
+3.  **STT (Deepgram)**: Fast, streaming speech-to-text.
+4.  **LLM (Groq + Gemini Fallback)**: Primarily uses Groq (Llama-3) for sub-second speeds. Automatically falls back to Google Gemini if Groq is unavailable.
+5.  **Tools (Tavily)**: Real-time web search capabilities for current information.
+6.  **TTS (Cartesia)**: Low-latency streaming text-to-speech with high-quality voices.
 
-### Prerequisites
-- Docker & Docker Compose
-- API Keys: Deepgram, Groq, Cartesia, Tavily
+### Multi-User Scalability
+- **Session Isolation**: Each WebSocket connection is assigned a unique UUID. Services (LLM, STT, TTS) are instantiated per session to ensure zero context bleed.
+- **Resource Efficiency**: Uses non-blocking asynchronous programming (FastAPI/asyncio) to handle hundreds of concurrent connections on a single instance.
+- **State Management**: Conversation history and smart caching are persisted in Redis, allowing the system to scale horizontally across multiple web nodes.
 
-### Quick Start (Docker)
-1. Configure your keys in `server/.env`.
-2. Run: `docker-compose up --build`
-3. Access at `http://localhost:3000`
+## 🛠️ Design Decisions
 
-### Local Development
-1. **Server**: `cd server && pip install -r requirements.txt && python app/main.py`
-2. **Client**: `cd client && npm install && npm run dev`
+- **WebSockets over HTTP**: Essential for full-duplex, low-latency communication required for "barge-in" support.
+- **Client-side VAD**: Offloading speech detection to the client browser reduces server load and provides immediate UI feedback.
+- **Structured Logging**: Uses JSON formatting with correlation IDs for production traceability.
+- **Observability**: Real-time metrics dashboard tracks TTFT (Time To First Token) and E2E latency.
 
+## 📈 Performance Analysis
+
+- **System Init**: < 2s
+- **E2E Latency**: ~800ms - 1.5s (depending on network)
+- **Barge-In**: Interrupts triggered in < 200ms.
+
+## 🛡️ Security & Resilience
+
+- **Rate Limiting**: Implemented session-per-IP limits to prevent automated abuse and resource exhaustion.
+- **Provider Fallback**: Multi-LLM provider support (Groq/Gemini) ensures high availability.
+- **Error Recovery**: STT/TTS services include automatic retry logic with exponential backoff.
+- **Docker Hardening**: Internal services (Redis) are shielded from public exposure.
+
+## 📦 Setup & Installation
+
+1.  **Clone the Repo**
+2.  **Backend Setup**:
+    ```bash
+    cd server
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    python app/main.py
+    ```
+3.  **Frontend Setup**:
+    ```bash
+    cd client
+    npm install
+    npm run dev
+    ```
+4.  **Configuration**: Copy `.env.example` to `.env` and provide your API keys.
+
+---
+*Built for iterative engineering assignment.*

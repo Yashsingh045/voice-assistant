@@ -1,11 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, MessageSquare, Activity } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Header from './components/Header';
+import TranscriptList from './components/TranscriptList';
+import VoiceControls from './components/VoiceControls';
+import Visualizer from './components/Visualizer';
+import MetricsDashboard from './components/MetricsDashboard';
+import { createWavHeader } from './utils/audio';
 
 const App = () => {
   const [isListening, setIsListening] = useState(false);
   const [transcripts, setTranscripts] = useState([]);
   const [status, setStatus] = useState('Idle');
   const [metrics, setMetrics] = useState(null);
+  const [error, setError] = useState(null);
+  const [currentAIResponse, setCurrentAIResponse] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
   const ws = useRef(null);
   const mediaRecorder = useRef(null);
   const audioContext = useRef(null);
@@ -13,42 +21,7 @@ const App = () => {
   const isPlaying = useRef(false);
   const currentSource = useRef(null);
 
-  useEffect(() => {
-    // Connect to WebSocket
-    ws.current = new WebSocket('ws://localhost:8000/ws/chat');
-
-    ws.current.onmessage = async (event) => {
-      if (typeof event.data === 'string') {
-        const data = JSON.parse(event.data);
-        if (data.type === 'transcript') {
-          setTranscripts(prev => [...prev, { text: data.text, is_user: data.is_user }]);
-        } else if (data.type === 'status') {
-          setStatus(data.text);
-        } else if (data.type === 'transcript_chunk') {
-          // Handle streaming chunks if we want to show them real-time
-          setTranscripts(prev => {
-            const last = prev[prev.length - 1];
-            if (last && !last.is_user) {
-              return [...prev.slice(0, -1), { ...last, text: last.text + data.text }];
-            } else {
-              return [...prev, { text: data.text, is_user: false }];
-            }
-          });
-        } else if (data.type === 'metrics') {
-          setMetrics(data.data);
-        }
-      } else {
-        // Audio data (blob)
-        const audioData = await event.data.arrayBuffer();
-        audioQueue.current.push(audioData);
-        if (!isPlaying.current) playNextAudio();
-      }
-    };
-
-    return () => ws.current.close();
-  }, []);
-
-  const playNextAudio = async () => {
+  const playNextAudio = useCallback(async () => {
     if (audioQueue.current.length === 0) {
       isPlaying.current = false;
       setStatus('Ready');
@@ -63,67 +36,125 @@ const App = () => {
       audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
     }
 
-    // Simple way to play raw PCM 16-bit 44.1kHz from Cartesia
     const buffer = await audioContext.current.decodeAudioData(createWavHeader(data));
     const source = audioContext.current.createBufferSource();
     source.buffer = buffer;
     source.connect(audioContext.current.destination);
     source.onended = () => {
       currentSource.current = null;
-      playNextAudio();
+      // Use a function reference to avoid circular dependency
+      setTimeout(() => {
+        if (audioQueue.current.length > 0) {
+          playNextAudio();
+        } else {
+          isPlaying.current = false;
+          setStatus('Ready');
+        }
+      }, 0);
     };
     currentSource.current = source;
     source.start();
-  };
+  }, []);
 
-  // Utility to wrap raw PCM in WAV header for browser playback
-  const createWavHeader = (pcmData) => {
-    const header = new ArrayBuffer(44);
-    const view = new DataView(header);
-    const length = pcmData.byteLength;
+  useEffect(() => {
+    let isMounted = true;
 
-    view.setUint32(0, 0x52494646, false); // "RIFF"
-    view.setUint32(4, 36 + length, true);
-    view.setUint32(8, 0x57415645, false); // "WAVE"
-    view.setUint32(12, 0x666d7420, false); // "fmt "
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true); // PCM
-    view.setUint16(22, 1, true); // Mono
-    view.setUint32(24, 44100, true);
-    view.setUint32(28, 44100 * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    view.setUint32(36, 0x64617461, false); // "data"
-    view.setUint32(40, length, true);
+    // Connect to WebSocket
+    const socket = new WebSocket('ws://localhost:8000/ws/chat');
+    ws.current = socket;
 
-    const blob = new Uint8Array(header.byteLength + pcmData.byteLength);
-    blob.set(new Uint8Array(header), 0);
-    blob.set(new Uint8Array(pcmData), header.byteLength);
-    return blob.buffer;
-  };
+    socket.onopen = () => {
+      if (isMounted) {
+        console.log('WebSocket connected');
+        setStatus('Ready');
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setError('Connection error');
+    };
+
+    socket.onclose = () => {
+      if (isMounted) {
+        console.log('WebSocket closed');
+        setStatus('Disconnected');
+      }
+    };
+
+    socket.onmessage = async (event) => {
+      if (!isMounted) return;
+
+      if (typeof event.data === 'string') {
+        const data = JSON.parse(event.data);
+        const now = new Date().toISOString();
+
+        if (data.type === 'transcript') {
+          // Final user transcript
+          setTranscripts(prev => [...prev, {
+            text: data.text,
+            is_user: true,
+            timestamp: now
+          }]);
+          setCurrentAIResponse("");
+          setInterimTranscript("");
+        } else if (data.type === 'transcript_interim') {
+          setInterimTranscript(data.text);
+        } else if (data.type === 'status') {
+          setStatus(data.text);
+        } else if (data.type === 'transcript_chunk') {
+          setCurrentAIResponse(prev => prev + data.text);
+          setTranscripts(prev => {
+            const last = prev[prev.length - 1];
+            if (last && !last.is_user) {
+              // Append to existing AI transcript
+              return [...prev.slice(0, -1), { ...last, text: last.text + data.text }];
+            } else {
+              // Start new AI transcript
+              return [...prev, { text: data.text, is_user: false, timestamp: now }];
+            }
+          });
+        } else if (data.type === 'metrics') {
+          setMetrics(data.data);
+        } else if (data.type === 'error') {
+          setError(data.text);
+          setTimeout(() => setError(null), 5000);
+        }
+      } else {
+        const audioData = await event.data.arrayBuffer();
+        audioQueue.current.push(audioData);
+        if (audioQueue.current.length > 50) audioQueue.current.shift(); // Drop old if too many
+        if (!isPlaying.current) playNextAudio();
+      }
+    };
+
+    return () => {
+      isMounted = false;
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        socket.close();
+      }
+    };
+  }, [playNextAudio]);
 
   const startListening = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioContext.current = new AudioContext({ sampleRate: 16000 });
-
-      // Load and add VAD AudioWorklet
       await audioContext.current.audioWorklet.addModule('/vad-processor.js');
       const vadNode = new AudioWorkletNode(audioContext.current, 'vad-processor');
-
       const source = audioContext.current.createMediaStreamSource(stream);
 
       vadNode.port.onmessage = (event) => {
         if (event.data.type === 'VAD_START') {
           setStatus('Listening');
-          // Barge-in logic: stop audio playback and notify backend
+          setError(null);
           if (isPlaying.current || audioQueue.current.length > 0) {
             audioQueue.current = [];
             if (currentSource.current) {
               try {
                 currentSource.current.stop();
               } catch (e) {
-                // Already stopped
+                // Ignore errors when stopping already stopped sources
               }
               currentSource.current = null;
             }
@@ -133,26 +164,25 @@ const App = () => {
           }
         } else if (event.data.type === 'VAD_END') {
           setStatus('Thinking');
-        }
-      };
-
-      const processor = audioContext.current.createScriptProcessor(4096, 1, 1);
-      source.connect(vadNode);
-      source.connect(processor);
-      processor.connect(audioContext.current.destination);
-
-      processor.onaudioprocess = (e) => {
-        if (ws.current.readyState === WebSocket.OPEN) {
-          const inputData = e.inputBuffer.getChannelData(0);
-          const pcmData = new Int16Array(inputData.length);
-          for (let i = 0; i < inputData.length; i++) {
-            pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+          if (ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'speech_end' }));
           }
-          ws.current.send(pcmData.buffer);
+        } else if (event.data.type === 'AUDIO_DATA') {
+          if (ws.current.readyState === WebSocket.OPEN) {
+            const inputData = event.data.audio;
+            const pcmData = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+              pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+            }
+            ws.current.send(pcmData.buffer);
+          }
         }
       };
 
-      mediaRecorder.current = { stream, source, processor, vadNode };
+      source.connect(vadNode);
+      vadNode.connect(audioContext.current.destination);
+
+      mediaRecorder.current = { stream, source, vadNode };
       setIsListening(true);
       setStatus('Listening');
     } catch (err) {
@@ -164,7 +194,6 @@ const App = () => {
     if (mediaRecorder.current) {
       mediaRecorder.current.stream.getTracks().forEach(t => t.stop());
       mediaRecorder.current.source.disconnect();
-      mediaRecorder.current.processor.disconnect();
       mediaRecorder.current.vadNode.disconnect();
     }
     setIsListening(false);
@@ -172,75 +201,62 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center p-8 font-sans">
-      <header className="w-full max-w-2xl flex justify-between items-center mb-12">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-          AI Voice Assistant
-        </h1>
-        <div className="flex items-center gap-2 px-4 py-1 rounded-full bg-slate-900 border border-slate-800">
-          <Activity size={16} className={isListening ? 'text-green-500 animate-pulse' : 'text-slate-500'} />
-          <span className="text-sm font-medium text-slate-300">{status}</span>
-        </div>
-      </header>
+    <div className="h-screen bg-[#0b1120] text-white flex flex-col overflow-hidden font-sans">
+      <Header />
+      <MetricsDashboard metrics={metrics} error={error} />
 
-      <main className="w-full max-w-2xl flex-1 flex flex-col gap-6 overflow-hidden">
-        <div className="text-center py-4">
-          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-            Sonic AI
-          </h1>
-          <p className="text-slate-400 mt-2 text-sm uppercase tracking-widest opacity-60">High-Performance Voice Assistant</p>
-        </div>
+      <div className="flex-1 flex overflow-hidden">
+        {/* Main Interaction Area */}
+        <main className="flex-1 flex flex-col items-center justify-between relative bg-gradient-to-b from-[#0b1120] to-[#0f172a]/20">
+          {/* AI Status Indicator */}
+          <div className="absolute top-8 left-8 flex flex-col gap-3">
+            {status === 'Speaking' && (
+              <p className="text-blue-400 text-[11px] font-bold animate-pulse tracking-widest flex items-center gap-2 uppercase">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                AI is speaking...
+              </p>
+            )}
+            {status === 'Thinking' && (
+              <p className="text-slate-400 text-[11px] font-bold animate-pulse tracking-widest flex items-center gap-2 uppercase">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shadow-[0_0_8px_rgba(148,163,184,0.5)]" />
+                Processing...
+              </p>
+            )}
+            {status.includes('Searching') && (
+              <p className="text-amber-400 text-[11px] font-bold animate-pulse tracking-widest flex items-center gap-2 uppercase">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
+                {status}...
+              </p>
+            )}
+          </div>
 
-        <div className="flex-1 overflow-y-auto pr-4 space-y-4 custom-scrollbar">
-          {transcripts.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center text-slate-500">
-              <MessageSquare size={48} className="mb-4 opacity-20" />
-              <p>Start speaking to initialize the conversation</p>
+          <div className="flex-1 w-full flex flex-col items-center justify-center px-12 text-center animate-fade-in">
+            <Visualizer isListening={isListening} status={status} />
+
+            <div className={`mt-12 max-w-2xl transition-all duration-500 ${currentAIResponse || interimTranscript ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+              }`}>
+              <h2 className="text-2xl md:text-3xl font-semibold text-slate-100 leading-tight">
+                {currentAIResponse ? `"${currentAIResponse}"` : interimTranscript ? `"${interimTranscript}..."` : ""}
+              </h2>
             </div>
-          )}
-          {transcripts.map((t, i) => (
-            <div key={i} className={`flex ${t.is_user ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] p-4 rounded-2xl ${t.is_user ? 'bg-blue-600 rounded-tr-none' : 'bg-slate-800 rounded-tl-none'
-                }`}>
-                {t.text}
-              </div>
-            </div>
-          ))}
-        </div>
+          </div>
 
-        <div className="flex flex-col items-center gap-6 pb-8">
-          <button
-            onClick={isListening ? stopListening : startListening}
-            className={`p-8 rounded-full transition-all transform hover:scale-105 active:scale-95 ${isListening ? 'bg-red-500 shadow-lg shadow-red-500/20' : 'bg-blue-600 shadow-lg shadow-blue-500/20'
-              }`}
-          >
-            {isListening ? <MicOff size={32} /> : <Mic size={32} />}
-          </button>
-          <p className="text-slate-400 text-sm">
-            {isListening ? 'Tap to stop' : 'Tap to start talking'}
-          </p>
+          <VoiceControls
+            isListening={isListening}
+            startListening={startListening}
+            stopListening={stopListening}
+            status={status}
+          />
+        </main>
 
-          {metrics && (
-            <div className="w-full mt-4 p-4 rounded-xl bg-slate-900/50 border border-slate-800 flex justify-around items-center gap-4 animate-in fade-in slide-in-from-bottom-2">
-              <div className="text-center">
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">LLM Latency</p>
-                <p className="text-lg font-mono text-cyan-400">{metrics.llm_generation?.toFixed(0)}<span className="text-xs ml-0.5">ms</span></p>
-              </div>
-              <div className="h-8 w-px bg-slate-800" />
-              <div className="text-center">
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Loop</p>
-                <p className="text-lg font-mono text-blue-400">{metrics.total_turnaround?.toFixed(0)}<span className="text-xs ml-0.5">ms</span></p>
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
+        {/* Sidebar Transcript */}
+        <aside className="w-96 min-w-[320px] flex-shrink-0 border-l border-white/[0.05] bg-[#0f172a]/40 backdrop-blur-3xl animate-slide-up">
+          <TranscriptList transcripts={transcripts} />
+        </aside>
+      </div>
 
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
-      `}</style>
+      {/* Decorative center glow */}
+      <div className="absolute top-1/2 left-[35%] -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/5 blur-[120px] rounded-full -z-10 pointer-events-none" />
     </div>
   );
 };

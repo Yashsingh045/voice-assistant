@@ -1,14 +1,16 @@
 class VADProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
-        this.threshold = 0.01; // Adjust based on environment
+        this.threshold = 0.02; // Increased threshold for better noise rejection
         this.bufferSize = 1024;
         this.isVoiceActive = false;
         this.silenceCounter = 0;
-        this.minSilenceDuration = 20; // in samples blocks
+        this.minSilenceDuration = 30; // Increased to ~1 second for more reliable detection
+        this.voiceStartCounter = 0;
+        this.minVoiceDuration = 5; // Require 5 blocks of voice before declaring start
     }
 
-    process(inputs, outputs, parameters) {
+    process(inputs, _outputs, _parameters) {
         const input = inputs[0];
         if (input.length > 0) {
             const samples = input[0];
@@ -19,18 +21,26 @@ class VADProcessor extends AudioWorkletProcessor {
             const rms = Math.sqrt(sum / samples.length);
 
             if (rms > this.threshold) {
-                if (!this.isVoiceActive) {
+                this.voiceStartCounter++;
+                if (!this.isVoiceActive && this.voiceStartCounter > this.minVoiceDuration) {
                     this.isVoiceActive = true;
                     this.port.postMessage({ type: 'VAD_START', rms });
                 }
                 this.silenceCounter = 0;
             } else {
+                this.voiceStartCounter = 0;
                 this.silenceCounter++;
                 if (this.isVoiceActive && this.silenceCounter > this.minSilenceDuration) {
                     this.isVoiceActive = false;
                     this.port.postMessage({ type: 'VAD_END', rms });
                 }
             }
+
+            // Always stream audio data to the port
+            this.port.postMessage({
+                type: 'AUDIO_DATA',
+                audio: samples // This is a Float32Array
+            });
         }
         return true;
     }

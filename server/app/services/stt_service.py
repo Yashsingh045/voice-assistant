@@ -14,20 +14,28 @@ class STTService:
     async def start(self):
         max_retries = 3
         retry_delay = 1
+        self.loop = asyncio.get_running_loop()
         
         for attempt in range(max_retries):
             try:
+                # Initialize new connection
                 self.dg_connection = self.dg_client.listen.live.v("1")
 
-                def on_message(self, result, **kwargs):
+                def on_message(self_inner, result, **kwargs):
                     sentence = result.channel.alternatives[0].transcript
                     if len(sentence) > 0:
-                        asyncio.run_coroutine_threadsafe(self.callback(sentence, result.is_final), asyncio.get_event_loop())
+                        try:
+                            asyncio.run_coroutine_threadsafe(
+                                self.callback(sentence, result.is_final), 
+                                self.loop
+                            )
+                        except Exception as e:
+                            logger.error(f"STT callback error: {e}")
 
-                def on_error(self, error, **kwargs):
-                    logger.error(f"Deepgram Error: {error}")
+                def on_error(self_inner, error, **kwargs):
+                    logger.error(f"Deepgram Connection Error: {error}")
 
-                self.dg_connection.on(LiveTranscriptionEvents.TranscriptReceived, on_message)
+                self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
                 self.dg_connection.on(LiveTranscriptionEvents.Error, on_error)
 
                 options = LiveOptions(
@@ -38,19 +46,18 @@ class STTService:
                     channels=1,
                     sample_rate=16000,
                     interim_results=True,
+                    endpointing=500,
                 )
                 
                 if self.dg_connection.start(options) is not False:
-                    logger.info("Deepgram connection started successfully")
+                    logger.info("Deepgram connection established")
                     return True
                 
-                logger.warning(f"Deepgram start attempt {attempt + 1} failed")
             except Exception as e:
-                logger.error(f"Deepgram start attempt {attempt + 1} error: {e}")
+                logger.error(f"Deepgram connection attempt {attempt + 1} failed: {e}")
             
-            if attempt < max_retries - 1:
-                await asyncio.sleep(retry_delay)
-                retry_delay *= 2
+            await asyncio.sleep(retry_delay)
+            retry_delay *= 2
                 
         return False
 

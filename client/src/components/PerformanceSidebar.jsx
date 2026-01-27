@@ -34,7 +34,7 @@ const PerformanceSidebar = ({ metrics, logs }) => {
     return (
         <aside className="w-80 glass-sidebar h-full flex flex-col p-6 overflow-hidden">
             <div className="mb-8">
-                <h2 className="text-xs font-black uppercase tracking-[0.3em] text-white/90 mb-1">Performance</h2>
+                <h2 className="text-xs font-black uppercase tracking-[0.3em] text-black/90 mb-1">Performance</h2>
                 <p className="text-[11px] text-slate-500 font-medium italic">Real-time engine diagnostics</p>
             </div>
 
@@ -83,17 +83,17 @@ const PerformanceSidebar = ({ metrics, logs }) => {
                 />
             </div>
 
-            <div className="mt-auto">
-                <div className="glass-card p-5 bg-black/20 h-21">
+            <div className="mt-5">
+                <div className="glass-card p-5 bg-black/20">
                     <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-400/80 mb-4 flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 pulse-glow"></span>
                         System Log
                     </h2>
                     <div className="space-y-2 h-32 overflow-y-auto no-scrollbar font-mono text-[10px]">
                         {logs.map((log, i) => (
-                            <div key={i} className="text-slate-500 flex gap-2">
+                            <div key={i} className="text-slate-400 flex gap-2">
                                 <span className="text-cyan-500/50">&gt;</span>
-                                <span className={i === logs.length - 1 ? 'text-slate-300' : ''}>{log}</span>
+                                <span className={i === logs.length - 1 ? 'text-slate-500' : ''}>{log}</span>
                             </div>
                         ))}
                         {logs.length === 0 && (

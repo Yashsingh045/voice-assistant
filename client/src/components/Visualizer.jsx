@@ -1,6 +1,4 @@
-import React from 'react';
-
-const Visualizer = ({ audioData, isListening, color = 'var(--accent-cyan)' }) => {
+const Visualizer = ({ audioData, isListening, color = 'var(--accent-primary)' }) => {
     // Use 40 bars as in the reference
     const bars = Array.from({ length: 40 });
 
@@ -12,8 +10,8 @@ const Visualizer = ({ audioData, isListening, color = 'var(--accent-cyan)' }) =>
                 const scale = isListening ? Math.max(0.1, rawValue / 128) : 0.05;
                 const height = `${scale * 100}%`;
 
-                // Multi-colored bars as in reference (alternating blue/purple)
-                const barColor = i % 2 === 0 ? 'var(--accent-blue)' : 'var(--accent-purple)';
+                // Multi-colored bars with light theme (indigo/pink gradient)
+                const barColor = i % 2 === 0 ? '#6366f1' : '#ec4899';
 
                 return (
                     <div
@@ -22,8 +20,8 @@ const Visualizer = ({ audioData, isListening, color = 'var(--accent-cyan)' }) =>
                         style={{
                             height,
                             backgroundColor: barColor,
-                            opacity: isListening ? 0.4 + scale * 0.6 : 0.1,
-                            boxShadow: isListening && scale > 0.5 ? `0 0 15px ${barColor}` : 'none'
+                            opacity: isListening ? 0.6 + scale * 0.4 : 0.15,
+                            boxShadow: isListening && scale > 0.5 ? `0 0 12px ${barColor}` : 'none'
                         }}
                     />
                 );

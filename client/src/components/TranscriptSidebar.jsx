@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from 'react';
-import { Send, User, Bot, Clock, Download } from 'lucide-react';
+import { useRef, useEffect } from 'react';
+import { Send, Clock, Download } from 'lucide-react';
 
 const MessageBubble = ({ message }) => {
     const isUser = message.is_user;
@@ -11,24 +11,24 @@ const MessageBubble = ({ message }) => {
     return (
         <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-6 group animate-in fade-in slide-in-from-bottom-2 duration-300`}>
             <div className="flex items-center gap-2 mb-1.5 px-1">
-                <span className={`text-[10px] font-black uppercase tracking-widest ${isUser ? 'text-blue-400' : 'text-purple-400'}`}>
+                <span className={`text-[10px] font-black uppercase tracking-widest ${isUser ? 'text-indigo-600' : 'text-pink-600'}`}>
                     {isUser ? 'User' : 'Assistant'}
                 </span>
-                <span className="text-[10px] text-slate-600 font-bold flex items-center gap-1">
+                <span className="text-[10px] text-slate-500 font-bold flex items-center gap-1">
                     <Clock size={10} />
                     {messageTime}
                 </span>
             </div>
 
             <div className={`max-w-[90%] p-4 rounded-2xl text-[13px] leading-relaxed font-medium shadow-lg transition-all duration-300 ${isUser
-                ? 'bg-blue-600 text-white rounded-tr-none border border-blue-500/50'
-                : 'bg-[#1e293b]/80 text-slate-200 rounded-tl-none border border-white/5'
+                ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-tr-none border border-indigo-400'
+                : 'bg-white text-slate-800 rounded-tl-none border border-slate-200 shadow-pink-100'
                 }`}>
                 {isStreaming ? (
                     <div className="flex gap-1 py-1">
-                        <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        <div className="w-2 h-2 bg-pink-500 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                        <div className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                     </div>
                 ) : (
                     message.text
@@ -97,21 +97,21 @@ const TranscriptSidebar = ({ messages, isTyping, onSendMessage }) => {
     };
 
     return (
-        <aside className="w-96 glass-sidebar-right h-full flex flex-col overflow-hidden border-l border-white/5">
+        <aside className="w-96 glass-sidebar-right h-full flex flex-col overflow-hidden border-l border-slate-200 rounded-3xl">
             {/* Header with gradient */}
-            <div className="px-6 py-5 bg-gradient-to-b from-[#0b1120]/60 to-transparent border-b border-white/5">
+            <div className="px-6 py-5 bg-gradient-to-b from-white/80 to-transparent border-b border-slate-200">
                 <div className="flex items-center justify-between mb-2">
                     <div>
-                        <h2 className="text-sm font-black uppercase tracking-[0.3em] text-white/90 mb-1">Live Transcript</h2>
+                        <h2 className="text-sm font-black uppercase tracking-[0.3em] text-slate-800 mb-1">Live Transcript</h2>
                         <p className="text-[10px] text-slate-500 font-medium">Real-time conversation</p>
                     </div>
                     <button
                         onClick={exportTranscript}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 hover:border-blue-500/40 rounded-lg transition-all duration-200 group"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 rounded-lg transition-all duration-200 group"
                         title="Export Transcript"
                     >
-                        <Download size={14} className="text-blue-400 group-hover:text-blue-300" />
-                        <span className="text-[10px] text-blue-400 group-hover:text-blue-300 font-bold uppercase tracking-wider">
+                        <Download size={14} className="text-indigo-600 group-hover:text-indigo-700" />
+                        <span className="text-[10px] text-indigo-600 group-hover:text-indigo-700 font-bold uppercase tracking-wider">
                             Export
                         </span>
                     </button>
@@ -123,11 +123,11 @@ const TranscriptSidebar = ({ messages, isTyping, onSendMessage }) => {
                 {messages.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
                         <div className="text-center">
-                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/5 flex items-center justify-center">
-                                <Clock size={24} className="text-slate-600" />
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-50 to-pink-50 flex items-center justify-center">
+                                <Clock size={24} className="text-indigo-400" />
                             </div>
-                            <p className="text-sm text-slate-500 font-medium">No messages yet</p>
-                            <p className="text-xs text-slate-600 mt-1">Start speaking or type a message</p>
+                            <p className="text-sm text-slate-700 font-medium">No messages yet</p>
+                            <p className="text-xs text-slate-500 mt-1">Start speaking or type a message</p>
                         </div>
                     </div>
                 ) : (
@@ -137,11 +137,11 @@ const TranscriptSidebar = ({ messages, isTyping, onSendMessage }) => {
                         ))}
                         {isTyping && (
                             <div className="flex flex-col items-start mb-6 animate-pulse">
-                                <div className="max-w-[80%] p-4 bg-[#1e293b]/40 rounded-2xl rounded-tl-none border border-white/5">
+                                <div className="max-w-[80%] p-4 bg-white rounded-2xl rounded-tl-none border border-slate-200 shadow-sm">
                                     <div className="flex gap-1">
-                                        <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce"></div>
-                                        <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce delay-75"></div>
-                                        <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce delay-150"></div>
+                                        <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></div>
+                                        <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-75"></div>
+                                        <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-150"></div>
                                     </div>
                                 </div>
                             </div>
@@ -151,22 +151,22 @@ const TranscriptSidebar = ({ messages, isTyping, onSendMessage }) => {
             </div>
 
             {/* Input area with improved styling */}
-            <div className="px-6 py-4 border-t border-white/5 bg-[#0b1120]/40">
+            <div className="px-6 py-4 border-t border-slate-200 bg-white/60">
                 <form onSubmit={handleSubmit} className="relative group">
                     <input
                         ref={inputRef}
                         type="text"
                         placeholder="Type a message..."
-                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-4 pr-12 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/50 focus:bg-white/10 transition-all"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 pl-4 pr-12 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-400 focus:bg-white transition-all"
                     />
                     <button
                         type="submit"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 hover:bg-blue-500 rounded-lg text-slate-400 hover:text-white transition-all duration-300"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 hover:bg-indigo-500 bg-indigo-600 rounded-lg text-white transition-all duration-300"
                     >
                         <Send size={16} />
                     </button>
                 </form>
-                <p className="text-[10px] text-slate-600 mt-2 text-center">Press Enter to send • Space to talk</p>
+                <p className="text-[10px] text-slate-500 mt-2 text-center">Press Enter to send • Space to talk</p>
             </div>
         </aside>
     );

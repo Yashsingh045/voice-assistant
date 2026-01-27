@@ -9,7 +9,7 @@ const Header = () => {
                     <AudioLines size={24} className="text-white" />
                 </div>
                 <div>
-                    <h1 className="text-lg font-black tracking-tight text-white leading-none mb-1">Pro-Voice AI</h1>
+                    <h1 className="text-lg font-black tracking-tight text-white leading-none mb-1">AI Voice Assistant</h1>
                     <div className="flex items-center gap-1.5">
                         <div className="system-status-dot"></div>
                         <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-emerald-500/80">System Ready</span>

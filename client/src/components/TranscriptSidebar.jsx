@@ -3,6 +3,9 @@ import { Send, User, Bot, Clock } from 'lucide-react';
 
 const MessageBubble = ({ message }) => {
     const isUser = message.is_user;
+    const messageTime = message.timestamp ? 
+        new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) :
+        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     return (
         <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-6 group animate-in fade-in slide-in-from-bottom-2 duration-300`}>
@@ -12,7 +15,7 @@ const MessageBubble = ({ message }) => {
                 </span>
                 <span className="text-[10px] text-slate-600 font-bold flex items-center gap-1">
                     <Clock size={10} />
-                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {messageTime}
                 </span>
             </div>
 

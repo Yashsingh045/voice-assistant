@@ -34,6 +34,11 @@ class STTService:
 
                 def on_error(self_inner, error, **kwargs):
                     logger.error(f"Deepgram Connection Error: {error}")
+                    # For AI STT, errors are non-critical - just log and continue
+                    if "ai_stt" in str(self_inner):
+                        logger.warning("AI STT connection error (non-critical)")
+                    else:
+                        logger.error("User STT connection error")
 
                 self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
                 self.dg_connection.on(LiveTranscriptionEvents.Error, on_error)
@@ -47,6 +52,8 @@ class STTService:
                     sample_rate=16000,
                     interim_results=True,
                     endpointing=500,
+                    # Disable VAD for AI voice detection
+                    vad_events=False,
                 )
                 
                 if self.dg_connection.start(options) is not False:

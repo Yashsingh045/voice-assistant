@@ -14,7 +14,7 @@ class TTSService:
     
     def __init__(self):
         self.api_key = settings.DEEPGRAM_API_KEY
-        self.voice = "aura-arcas-en"  # Male, calm voice
+        self.voice = "aura-athena-en"  # Female, professional voice
         self.base_url = "https://api.deepgram.com/v1/speak"
     
     async def stream_audio(self, text: str):

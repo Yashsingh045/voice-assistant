@@ -64,8 +64,22 @@ const App = () => {
 
         switch (data.type) {
           case 'transcript':
-            setMessages(prev => [...prev, { text: data.text, is_user: data.is_user }]);
+            setMessages(prev => [...prev, { 
+              text: data.text, 
+              is_user: data.is_user,
+              timestamp: new Date().toISOString()
+            }]);
             if (data.is_user) setIsTyping(true);
+            break;
+          case 'assistant_transcript':
+            setMessages(prev => [...prev, { 
+              text: data.text, 
+              is_user: data.is_user,
+              timestamp: new Date().toISOString()
+            }]);
+            break;
+          case 'assistant_transcript_interim':
+            // Optionally show interim AI transcript in UI or ignore
             break;
           case 'transcript_chunk':
             setIsTyping(false);
@@ -126,7 +140,11 @@ const App = () => {
   const sendMessage = (text) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'text_input', text }));
-      setMessages(prev => [...prev, { text, is_user: true }]);
+      setMessages(prev => [...prev, { 
+        text, 
+        is_user: true,
+        timestamp: new Date().toISOString()
+      }]);
       setIsTyping(true);
     }
   };

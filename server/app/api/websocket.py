@@ -3,14 +3,15 @@ from app.services.stt_service import STTService
 from app.services.tts_service import TTSService
 from app.services.llm_service import LLMService
 from app.services.history_service import HistoryService
+from app.services.transcript_service import TranscriptService
 from app.services.vad_service import VADService
 from app.utils.metrics import MetricsTracker
 from app.utils.validation import sanitize_transcript, validate_session_id, sanitize_system_prompt
+from app.utils.sentence_detection import SmartSentenceBuffer
 import asyncio
 import uuid
 import logging
 import json
-import re
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -21,7 +22,11 @@ active_connections = {}
 from app.utils.audio_utils import process_audio_chunk
 
 
-async def _tts_sentence_to_pcm(tts_service: TTSService, ai_stt_service, sentence: str, interrupt_event: asyncio.Event, gen_id: int, current_generation_id: int):
+async def _tts_sentence_to_pcm(tts_service: TTSService, sentence: str, interrupt_event: asyncio.Event, gen_id: int, current_generation_id: int):
+    """
+    Convert a sentence to PCM audio using TTS service.
+    Removed AI STT dependency - transcripts now use original LLM text.
+    """
     pcm_parts = []
     try:
         async for audio_chunk in tts_service.stream_audio(sentence):
@@ -29,13 +34,6 @@ async def _tts_sentence_to_pcm(tts_service: TTSService, ai_stt_service, sentence
                 return b""
             if audio_chunk:
                 pcm_parts.append(audio_chunk)
-                # Stream chunk immediately to AI STT for real-time transcription
-                # Don't let AI STT errors interrupt the main flow
-                try:
-                    if ai_stt_service:
-                        await ai_stt_service.send_audio(audio_chunk)
-                except Exception as e:
-                    logger.warning(f"AI STT streaming error (non-critical): {e}")
         return b"".join(pcm_parts)
     except Exception as e:
         logger.error(f"TTS streaming error: {e}")
@@ -68,6 +66,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
     llm_service = LLMService()
     tts_service = TTSService()
     history_service = HistoryService()
+    transcript_service = TranscriptService(history_service)
     vad_service = VADService(mode=1, sample_rate=16000)  # Mode 1 for balanced sensitivity
     metrics = MetricsTracker()
     metrics.set_model("Llama 3.3 70B") # Explicitly set model name
@@ -75,21 +74,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
     # helper to send status logs
     async def send_system_log(msg: str):
         await websocket.send_json({"type": "system_log", "text": msg})
-
-    # AI transcript STT service (to transcribe TTS output)
-    ai_stt_service = None
-    ai_transcript_buffer = ""
-    
-    async def ai_stt_callback(transcript: str, is_final: bool):
-        nonlocal ai_transcript_buffer
-        try:
-            if is_final:
-                ai_transcript_buffer += transcript + " "
-                await websocket.send_json({"type": "assistant_transcript", "text": transcript, "is_user": False})
-            else:
-                await websocket.send_json({"type": "assistant_transcript_interim", "text": transcript})
-        except Exception as e:
-            logger.warning(f"AI STT callback error (non-critical): {e}")
     
     await send_system_log("Connection secure")
     await send_system_log("Buffer synchronized")
@@ -120,8 +104,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
             metrics.start_timing("llm_generation")
             metrics.start_timing("tts_latency")
             
-            # Save user message to history
-            await history_service.add_message(session_id, "user", transcript)
+            # Save user message to history using transcript service
+            await transcript_service.store_user_message(session_id, transcript)
             
             # Fetch full history for LLM context
             history = await history_service.get_history(session_id)
@@ -137,8 +121,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
             current_generation_id += 1
             gen_id = current_generation_id
             
-            sentence_buffer = ""
+            # Initialize smart sentence buffer for this response
+            sentence_buffer = SmartSentenceBuffer()
             full_ai_response = ""
+            
+            # Send empty assistant transcript immediately to show the bubble
+            await websocket.send_json({"type": "assistant_transcript_start", "is_user": False})
             
             async for chunk in llm_service.get_response(transcript, history=history[:-1]):
                 # If a new turn started or barge-in happened, abort this one
@@ -151,56 +139,68 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
                     continue
 
                 await websocket.send_json({"type": "transcript_chunk", "text": chunk})
-                sentence_buffer += chunk
                 full_ai_response += chunk
                 
                 # Track tokens for TPS
-                metrics.add_tokens(1) 
+                metrics.add_tokens(1)
                 
-                if any(punct in chunk for punct in [".", "!", "?", "\n"]):
-                    # Remove trailing punctuation before TTS to prevent reading periods
-                    clean_chunk = chunk.rstrip(".!?")
-                    sentences = re.split(r'(?<=[.!?])\s+', sentence_buffer + clean_chunk)
-                    if len(sentences) > 1:
-                        for s in sentences[:-1]:
-                            if s.strip():
-                                pcm = await _tts_sentence_to_pcm(tts_service, ai_stt_service, s.strip(), interrupt_event, gen_id, current_generation_id)
-                                # Stop TTS timing on first audio chunk
-                                if metrics.metrics.get("tts_latency", {}).get("start"):
-                                    metrics.stop_timing("tts_latency")
-                                if interrupt_event.is_set() or gen_id != current_generation_id:
-                                    break
-                                if pcm:
-                                    await websocket.send_bytes(pcm)
-                                    # Note: AI STT streaming is now handled in _tts_sentence_to_pcm for real-time transcription
+                # Add chunk to smart sentence buffer
+                complete_sentences = sentence_buffer.add_chunk(chunk)
+                
+                # Process any complete sentences
+                for sentence in complete_sentences:
+                    if interrupt_event.is_set() or gen_id != current_generation_id:
+                        break
+                    
+                    if sentence.strip():
+                        # Remove trailing punctuation to prevent TTS from reading "dot" sounds
+                        clean_sentence = sentence.rstrip('.!?')
+                        
+                        # Generate TTS audio with cleaned sentence
+                        pcm = await _tts_sentence_to_pcm(tts_service, clean_sentence.strip(), interrupt_event, gen_id, current_generation_id)
+                        
+                        # Stop TTS timing on first audio chunk
+                        if metrics.metrics.get("tts_latency", {}).get("start"):
+                            metrics.stop_timing("tts_latency")
+                        
                         if interrupt_event.is_set() or gen_id != current_generation_id:
                             break
-                        sentence_buffer = sentences[-1]
-                    elif "\n" in chunk and sentence_buffer.strip():
-                         clean_chunk = chunk.rstrip(".!?")
-                         pcm = await _tts_sentence_to_pcm(tts_service, ai_stt_service, (sentence_buffer + clean_chunk).strip(), interrupt_event, gen_id, current_generation_id)
-                         if not (interrupt_event.is_set() or gen_id != current_generation_id):
+                        
+                        if pcm:
+                            await websocket.send_bytes(pcm)
+                
+                if interrupt_event.is_set() or gen_id != current_generation_id:
+                    break
+
+            # Flush any remaining text in the buffer
+            if not interrupt_event.is_set() and gen_id == current_generation_id:
+                remaining_sentences = sentence_buffer.flush()
+                for sentence in remaining_sentences:
+                    if sentence.strip():
+                        # Remove trailing punctuation to prevent TTS from reading "dot" sounds
+                        clean_sentence = sentence.rstrip('.!?')
+                        
+                        # Generate TTS audio with cleaned sentence
+                        pcm = await _tts_sentence_to_pcm(tts_service, clean_sentence.strip(), interrupt_event, gen_id, current_generation_id)
+                        
+                        if not (interrupt_event.is_set() or gen_id != current_generation_id):
                             if pcm:
                                 await websocket.send_bytes(pcm)
-                                # Note: AI STT streaming is now handled in _tts_sentence_to_pcm for real-time transcription
-                         sentence_buffer = ""
-
-            # Stream any remaining text
-            if not interrupt_event.is_set() and gen_id == current_generation_id and sentence_buffer.strip():
-                # Remove trailing punctuation from final sentence
-                clean_sentence = sentence_buffer.rstrip(".!?")
-                pcm = await _tts_sentence_to_pcm(tts_service, ai_stt_service, clean_sentence.strip(), interrupt_event, gen_id, current_generation_id)
-                if not (interrupt_event.is_set() or gen_id != current_generation_id):
-                    if pcm:
-                        await websocket.send_bytes(pcm)
-                        # Note: AI STT streaming is now handled in _tts_sentence_to_pcm for real-time transcription
             
-            # Save AI response to history
-            if full_ai_response and not interrupt_event.is_set() and gen_id == current_generation_id:
-                await history_service.add_message(session_id, "assistant", full_ai_response)
-                metrics.stop_timing("llm_generation")
-                metrics.stop_timing("total_turnaround")
-                await websocket.send_json({"type": "metrics", "data": metrics.get_all()})
+            # Send the complete agent response as a single transcript at the end
+            if not interrupt_event.is_set() and gen_id == current_generation_id:
+                if full_ai_response:
+                    # Send the full response as one transcript message
+                    await websocket.send_json({"type": "assistant_transcript", "text": full_ai_response, "is_user": False})
+                    
+                    # Save AI response to history using transcript service
+                    await transcript_service.store_agent_message(session_id, full_ai_response)
+                    metrics.stop_timing("llm_generation")
+                    metrics.stop_timing("total_turnaround")
+                    await websocket.send_json({"type": "metrics", "data": metrics.get_all()})
+                else:
+                    # If no response was generated, send empty transcript to clear loading state
+                    await websocket.send_json({"type": "assistant_transcript", "text": "I apologize, I couldn't generate a response.", "is_user": False})
                     
         except WebSocketDisconnect:
             raise
@@ -214,10 +214,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
             pass
                 
     stt_service = STTService(stt_callback)
-    ai_stt_service = STTService(ai_stt_callback)
     await send_system_log("Engine ready")
     await stt_service.start()
-    await ai_stt_service.start()
     
     try:
         while True:
@@ -261,6 +259,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
                         clean_prompt = sanitize_system_prompt(new_prompt)
                         llm_service.set_system_prompt(clean_prompt)
                         await websocket.send_json({"type": "status", "text": "Instructions updated."})
+                elif msg.get("type") == "text_input":
+                    # Handle typed text messages (same as voice input)
+                    text_message = msg.get("text", "").strip()
+                    if text_message:
+                        # Sanitize the text input
+                        clean_text = sanitize_transcript(text_message)
+                        if clean_text:
+                            # Process as if it was a voice transcript
+                            await stt_callback(clean_text, is_final=True)
                     
     except WebSocketDisconnect:
         logger.info("Client disconnected")
@@ -270,5 +277,3 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
         active_connections[client_host] = max(0, active_connections.get(client_host, 1) - 1)
         if stt_service:
             await stt_service.stop()
-        if ai_stt_service:
-            await ai_stt_service.stop()

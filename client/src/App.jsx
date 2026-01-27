@@ -71,12 +71,35 @@ const App = () => {
             }]);
             if (data.is_user) setIsTyping(true);
             break;
-          case 'assistant_transcript':
+          case 'assistant_transcript_start':
+            // Create placeholder for assistant response
             setMessages(prev => [...prev, { 
-              text: data.text, 
-              is_user: data.is_user,
-              timestamp: new Date().toISOString()
+              text: '', 
+              is_user: false,
+              timestamp: new Date().toISOString(),
+              isStreaming: true
             }]);
+            setIsTyping(false);
+            break;
+          case 'assistant_transcript':
+            // Replace the streaming placeholder with the actual message
+            setMessages(prev => {
+              const newMessages = [...prev];
+              // Find and remove any streaming assistant message
+              const streamingIndex = newMessages.findIndex(msg => !msg.is_user && msg.isStreaming);
+              if (streamingIndex !== -1) {
+                // Remove the streaming placeholder
+                newMessages.splice(streamingIndex, 1);
+              }
+              // Add the actual message
+              newMessages.push({
+                text: data.text,
+                is_user: false,
+                timestamp: new Date().toISOString(),
+                isStreaming: false
+              });
+              return newMessages;
+            });
             break;
           case 'assistant_transcript_interim':
             // Optionally show interim AI transcript in UI or ignore
@@ -140,11 +163,8 @@ const App = () => {
   const sendMessage = (text) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'text_input', text }));
-      setMessages(prev => [...prev, { 
-        text, 
-        is_user: true,
-        timestamp: new Date().toISOString()
-      }]);
+      // Don't add message here - let the server send it back via 'transcript' message
+      // This prevents duplicate messages
       setIsTyping(true);
     }
   };

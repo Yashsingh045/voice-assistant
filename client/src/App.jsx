@@ -55,7 +55,9 @@ const App = () => {
 
   const connectWebSocket = useCallback(() => {
     const connectWebSocketImpl = () => {
-      const socket = new WebSocket('ws://localhost:8000/ws/chat');
+      // Use environment variable or fallback to localhost
+      const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat';
+      const socket = new WebSocket(wsUrl);
     socket.binaryType = 'arraybuffer';
 
     socket.onopen = () => {

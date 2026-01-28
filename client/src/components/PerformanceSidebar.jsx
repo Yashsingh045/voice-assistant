@@ -32,7 +32,7 @@ const DiagnosticCard = ({ icon: Icon, label, value, subtext, status, gradient })
 
 const PerformanceSidebar = ({ metrics, logs }) => {
     return (
-        <aside className="w-80 glass-sidebar h-full flex flex-col p-6 overflow-hidden">
+        <aside className="w-80 glass-sidebar h-full flex flex-col p-6 overflow-hidden rounded-3xl">
             <div className="mb-8">
                 <h2 className="text-xs font-black uppercase tracking-[0.3em] text-black/90 mb-1">Performance</h2>
                 <p className="text-[11px] text-slate-500 font-medium italic">Real-time engine diagnostics</p>

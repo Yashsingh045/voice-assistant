@@ -1,105 +1,104 @@
-import React from 'react';
-import { Zap, Cpu, Activity, Wifi, HardDrive } from 'lucide-react';
+import { Zap, Cpu, Wifi, HardDrive } from 'lucide-react';
 
-const DiagnosticCard = ({ icon: Icon, label, value, subtext, status, gradient }) => (
-    <div className="glass-card p-5 relative overflow-hidden group hover:border-white/10 transition-all duration-300">
-        {/* <div className={`absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity`}>
-            <Icon size={48} />
-        </div> */}
-
-        <div className="flex justify-between items-start mb-4">
-            <div className="p-2 bg-white/5 rounded-lg">
-                <Icon size={17} className="text-cyan-400" />
+const MetricBox = ({ icon: Icon, label, value, subtext, badge, progress, color = "text-purple-500" }) => (
+    <div className="bg-white/80 backdrop-blur-md rounded-[2rem] p-6 shadow-sm border border-white/20 transition-all duration-300 hover:shadow-md flex flex-col justify-between min-h-[140px]">
+        <div className="flex justify-between items-start mb-2">
+            <div className="p-2 bg-cyan-50 rounded-xl">
+                <Icon size={20} className="text-cyan-500" />
             </div>
-            {status && (
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">
-                    {status}
+            {badge && (
+                <span className="px-3 py-1 bg-green-100 text-green-600 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                    {badge}
                 </span>
             )}
         </div>
 
         <div>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.1em] mb-1">{label}</p>
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</h3>
             <div className="flex items-baseline gap-2">
-                <h3 className={`text-2xl font-bold ${gradient || 'text-white'}`}>
+                <span className={`text-2xl font-bold ${color}`}>
                     {value}
-                </h3>
-                {subtext && <span className="text-[11px] text-slate-400 font-medium">{subtext}</span>}
+                </span>
+                {subtext && <span className="text-xs font-semibold text-slate-400">{subtext}</span>}
             </div>
         </div>
+
+        {progress !== undefined && (
+            <div className="mt-3 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div
+                    className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-500"
+                    style={{ width: `${progress}%` }}
+                />
+            </div>
+        )}
     </div>
 );
 
 const PerformanceSidebar = ({ metrics, logs }) => {
     return (
-        <aside className="w-80 glass-sidebar h-full flex flex-col p-6 overflow-hidden rounded-3xl">
+        <aside className="w-full h-full flex flex-col pt-8 pb-4 px-6 overflow-hidden bg-transparent">
             <div className="mb-8">
-                <h2 className="text-xs font-black uppercase tracking-[0.3em] text-black/90 mb-1">Performance</h2>
-                <p className="text-[11px] text-slate-500 font-medium italic">Real-time engine diagnostics</p>
+                <h2 className="text-xl font-black uppercase tracking-widest text-slate-900 mb-1">Performance</h2>
+                <p className="text-sm font-medium text-slate-500 italic">Real-time engine diagnostics</p>
             </div>
 
-            <div className="flex-1 space-y-4 overflow-y-auto no-scrollbar pb-6">
-                <DiagnosticCard
+            <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-4 pr-1">
+                {/* Latency Card */}
+                <MetricBox
                     icon={Zap}
                     label="Latency"
-                    value={`${metrics?.total_turnaround?.toFixed(0) || '0'}ms`}
-                    subtext="-12% vs avg"
-                    status="Optimal"
-                    gradient="premium-gradient-text"
+                    value={`${Math.round(metrics?.total_turnaround || 0)}ms`}
+                    subtext={metrics?.stt_latency ? `STT: ${Math.round(metrics.stt_latency)}ms` : '-12% vs avg'}
+                    badge="Optimal"
+                    color="text-purple-600"
                 />
 
-                <DiagnosticCard
+                {/* Engine Model Card */}
+                <MetricBox
                     icon={Cpu}
                     label="Engine Model"
-                    value={metrics?.model || 'SONIC-2'}
-                    gradient="premium-gradient-text"
+                    value={metrics?.model || "Llama 3.3 70B"}
+                    color="premium-gradient-text" // Using the class for gradient text
                 />
 
-                <DiagnosticCard
+                {/* Network Card */}
+                <MetricBox
                     icon={Wifi}
                     label="Network Speed"
-                    value={`${metrics?.network_speed || '—'} Mbps`}
-                    subtext="STABLE"
-                    status="Active"
-                    gradient="premium-gradient-text"
+                    value={`${metrics?.network_speed?.toFixed(1) || '0'} Mbps`}
+                    subtext="Stable"
+                    badge="Active"
+                    color="text-purple-600"
                 />
 
-                <DiagnosticCard
-                    icon={HardDrive}
-                    label="Memory Load"
-                    value={`${metrics?.memory_usage || '—'} MB`}
-                    subtext="OPTIMIZED"
-                    status="Active"
-                    gradient="premium-gradient-text"
-                />
-
-                <DiagnosticCard
-                    icon={Activity}
-                    label="Processing Speed"
-                    value={`${metrics?.tps?.toFixed(0) || '0'} tps`}
-                    subtext="+5.2%"
-                    status="Stable"
-                    gradient="premium-gradient-text"
-                />
-            </div>
-
-            <div className="mt-5">
-                <div className="glass-card p-5 bg-black/20">
-                    <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-400/80 mb-4 flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 pulse-glow"></span>
-                        System Log
-                    </h2>
-                    <div className="space-y-2 h-32 overflow-y-auto no-scrollbar font-mono text-[10px]">
-                        {logs.map((log, i) => (
-                            <div key={i} className="text-slate-400 flex gap-2">
-                                <span className="text-cyan-500/50">&gt;</span>
-                                <span className={i === logs.length - 1 ? 'text-slate-500' : ''}>{log}</span>
-                            </div>
-                        ))}
-                        {logs.length === 0 && (
-                            <div className="text-slate-600 italic">No logs available...</div>
-                        )}
+                {/* System Log Card */}
+                <div className="bg-white/80 backdrop-blur-md rounded-[2rem] p-6 shadow-sm border border-white/20 flex-1 min-h-[180px] flex flex-col mt-4">
+                    <div className="flex items-center gap-2 mb-4 mt-5">
+                        <div className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)] animate-pulse"></div>
+                        <h3 className="text-[10px] font-bold text-cyan-500 uppercase tracking-[0.2em]">System Log</h3>
                     </div>
+                    {logs.length === 0 ? (
+                        <div className="text-slate-400 italic opacity-50">No Logs Available...</div>
+                    ) : (
+
+                        <div className="flex-1 overflow-y-auto space-y-2 font-mono text-[10px] custom-scrollbar pr-2 flex flex-col-reverse">
+                            {/* Display displayed in reverse order (newest at top) or standard with auto-scroll? User asked for "fixing" it.
+                            Let's sticky to standard order but auto-scroll. Actually, flex-col-reverse is easier for checking "latest" at bottom if we want it to stick.
+                            But standard console is top-down. 
+                            Let's use a standard list with a ref for auto-scrolling. 
+                        */}
+                            {[...logs].reverse().map((log, i) => (
+                                <div key={i} className="flex gap-2 items-start animate-fade-in mb-10">
+                                    <span className="text-cyan-400/70 select-none text-[10px] mt-0.5">{'>'}</span>
+                                    <span className={`leading-relaxed break-words ${i === 0 ? 'text-slate-600 font-bold' : 'text-slate-400'}`}>
+                                        {log}
+                                    </span>
+                                </div>
+                            ))}
+
+                        </div>
+
+                    )}
                 </div>
             </div>
         </aside>

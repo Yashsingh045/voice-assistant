@@ -12,10 +12,29 @@ const App = () => {
   const [isListening, setIsListening] = useState(false);
   const { startStreaming, stopStreaming, audioData } = useAudioStreaming();
   const { playChunk } = useAudioPlayer();
-  
+
   // Sidebar visibility state for mobile
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+
+  // Theme state: 'light', 'dark', 'multicolor'
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('app-theme') || 'light';
+  });
+
+  // Apply theme to document
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('app-theme', theme);
+  }, [theme]);
+
+  const cycleTheme = () => {
+    setTheme(prev => {
+      if (prev === 'light') return 'dark';
+      if (prev === 'dark') return 'multicolor';
+      return 'light';
+    });
+  };
 
   const [metrics, setMetrics] = useState({
     llm_generation: 0,
@@ -58,87 +77,87 @@ const App = () => {
       // Use environment variable or fallback to localhost
       const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat';
       const socket = new WebSocket(wsUrl);
-    socket.binaryType = 'arraybuffer';
+      socket.binaryType = 'arraybuffer';
 
-    socket.onopen = () => {
-      console.log('WebSocket Connected');
-      ws.current = socket;
-    };
+      socket.onopen = () => {
+        console.log('WebSocket Connected');
+        ws.current = socket;
+      };
 
-    socket.onmessage = async (event) => {
-      if (typeof event.data === 'string') {
-        const data = JSON.parse(event.data);
+      socket.onmessage = async (event) => {
+        if (typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
 
-        switch (data.type) {
-          case 'transcript':
-            setMessages(prev => [...prev, { 
-              text: data.text, 
-              is_user: data.is_user,
-              timestamp: new Date().toISOString()
-            }]);
-            if (data.is_user) setIsTyping(true);
-            break;
-          case 'assistant_transcript_start':
-            // Create placeholder for assistant response
-            setMessages(prev => [...prev, { 
-              text: '', 
-              is_user: false,
-              timestamp: new Date().toISOString(),
-              isStreaming: true
-            }]);
-            setIsTyping(false);
-            break;
-          case 'assistant_transcript':
-            // Replace ALL streaming placeholders with the actual message
-            setMessages(prev => {
-              console.log('Before filtering:', prev.length, 'messages');
-              // Filter out ALL streaming assistant messages
-              const filteredMessages = prev.filter(msg => {
-                const shouldKeep = !(msg.isStreaming && !msg.is_user);
-                if (!shouldKeep) {
-                  console.log('Removing streaming message:', msg);
-                }
-                return shouldKeep;
-              });
-              console.log('After filtering:', filteredMessages.length, 'messages');
-              // Add the actual message
-              const newMessages = [...filteredMessages, {
+          switch (data.type) {
+            case 'transcript':
+              setMessages(prev => [...prev, {
                 text: data.text,
+                is_user: data.is_user,
+                timestamp: new Date().toISOString()
+              }]);
+              if (data.is_user) setIsTyping(true);
+              break;
+            case 'assistant_transcript_start':
+              // Create placeholder for assistant response
+              setMessages(prev => [...prev, {
+                text: '',
                 is_user: false,
                 timestamp: new Date().toISOString(),
-                isStreaming: false
-              }];
-              console.log('Final messages:', newMessages.length);
-              return newMessages;
-            });
-            break;
-          case 'assistant_transcript_interim':
-            // Optionally show interim AI transcript in UI or ignore
-            break;
-          case 'transcript_chunk':
-            setIsTyping(false);
-            // Handle streaming transcript if needed, but for now we use bubbles
-            break;
-          case 'status':
-            setStatus(data.text);
-            break;
-          case 'system_log':
-            setSystemLogs(prev => [...prev.slice(-19), data.text]);
-            break;
-          case 'metrics':
-            setMetrics(data.data);
-            break;
-          case 'error':
-            console.error(data.text);
-            setSystemLogs(prev => [...prev, `ERROR: ${data.text}`]);
-            break;
+                isStreaming: true
+              }]);
+              setIsTyping(false);
+              break;
+            case 'assistant_transcript':
+              // Replace ALL streaming placeholders with the actual message
+              setMessages(prev => {
+                console.log('Before filtering:', prev.length, 'messages');
+                // Filter out ALL streaming assistant messages
+                const filteredMessages = prev.filter(msg => {
+                  const shouldKeep = !(msg.isStreaming && !msg.is_user);
+                  if (!shouldKeep) {
+                    console.log('Removing streaming message:', msg);
+                  }
+                  return shouldKeep;
+                });
+                console.log('After filtering:', filteredMessages.length, 'messages');
+                // Add the actual message
+                const newMessages = [...filteredMessages, {
+                  text: data.text,
+                  is_user: false,
+                  timestamp: new Date().toISOString(),
+                  isStreaming: false
+                }];
+                console.log('Final messages:', newMessages.length);
+                return newMessages;
+              });
+              break;
+            case 'assistant_transcript_interim':
+              // Optionally show interim AI transcript in UI or ignore
+              break;
+            case 'transcript_chunk':
+              setIsTyping(false);
+              // Handle streaming transcript if needed, but for now we use bubbles
+              break;
+            case 'status':
+              setStatus(data.text);
+              break;
+            case 'system_log':
+              setSystemLogs(prev => [...prev.slice(-19), data.text]);
+              break;
+            case 'metrics':
+              setMetrics(data.data);
+              break;
+            case 'error':
+              console.error(data.text);
+              setSystemLogs(prev => [...prev, `ERROR: ${data.text}`]);
+              break;
+          }
+        } else {
+          // Handle audio bytes
+          const pcmBuffer = event.data instanceof ArrayBuffer ? event.data : await event.data.arrayBuffer();
+          playChunk(pcmBuffer);
         }
-      } else {
-        // Handle audio bytes
-        const pcmBuffer = event.data instanceof ArrayBuffer ? event.data : await event.data.arrayBuffer();
-        playChunk(pcmBuffer);
-      }
-    };
+      };
 
       socket.onclose = () => {
         console.log('WebSocket Disconnected');
@@ -196,10 +215,10 @@ const App = () => {
   }, [isListening]);
 
   return (
-     <div className="flex flex-col h-screen premium-bg text-gray-900 selection:bg-indigo-200">
-      <Header />
+    <div className="flex flex-col h-screen app-bg text-gray-900 selection:bg-indigo-200">
+      <Header theme={theme} onThemeChange={cycleTheme} />
 
-      <main className="flex-1 flex overflow-hidden relative">
+      <main className="flex-1 flex overflow-hidden relative px-10 py-6 gap-10">
         {/* Mobile Menu Buttons */}
         <button
           onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
@@ -222,14 +241,14 @@ const App = () => {
           fixed md:relative inset-y-0 left-0 z-40 
           transform transition-transform duration-300 ease-in-out
           ${leftSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-          w-80 md:w-80
+          w-90 md:w-96 rounded-3xl overflow-hidden shadow-xl
         `}>
           <PerformanceSidebar metrics={metrics} logs={systemLogs} />
         </div>
 
         {/* Overlay for mobile when sidebar is open */}
         {(leftSidebarOpen || rightSidebarOpen) && (
-          <div 
+          <div
             className="md:hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-30"
             onClick={() => {
               setLeftSidebarOpen(false);
@@ -239,7 +258,7 @@ const App = () => {
         )}
 
         {/* Center Main Stage */}
-        <div className="flex-1 w-full md:w-auto">
+        <div className="flex-1 w-full md:w-auto h-full p-0">
           <VoiceInterface
             isListening={isListening}
             status={status}
@@ -253,7 +272,7 @@ const App = () => {
           fixed md:relative inset-y-0 right-0 z-40
           transform transition-transform duration-300 ease-in-out
           ${rightSidebarOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
-          w-80 md:w-96
+          w-80 md:w-96 rounded-3xl overflow-hidden shadow-xl
         `}>
           <TranscriptSidebar
             messages={messages}

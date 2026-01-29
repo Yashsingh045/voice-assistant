@@ -1,5 +1,5 @@
-import { useRef, useEffect } from 'react';
-import { Send, Clock, Download } from 'lucide-react';
+import { useRef, useEffect, useState } from 'react';
+import { Send, Clock, Download, Plus } from 'lucide-react';
 
 const MessageBubble = ({ message }) => {
     const isUser = message.is_user;
@@ -44,7 +44,7 @@ const MessageBubble = ({ message }) => {
     );
 };
 
-const TranscriptSidebar = ({ messages, isTyping, onSendMessage }) => {
+const TranscriptSidebar = ({ messages, isTyping, onSendMessage, onNewSession }) => {
     const scrollRef = useRef(null);
     const inputRef = useRef(null);
 
@@ -117,14 +117,24 @@ const TranscriptSidebar = ({ messages, isTyping, onSendMessage }) => {
                         Session Active
                     </p>
                 </div>
-                <button
-                    onClick={exportTranscript}
-                    className="p-2 rounded-lg transition-all hover:bg-black/5 active:scale-95"
-                    style={{ color: 'var(--text-muted)' }}
-                    title="Export Transcript"
-                >
-                    <Download size={16} />
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => onNewSession && onNewSession()}
+                        className="p-2 rounded-lg transition-all hover:bg-black/5 active:scale-95"
+                        style={{ color: 'var(--accent-primary)' }}
+                        title="New session"
+                    >
+                        <Plus size={16} />
+                    </button>
+                    <button
+                        onClick={exportTranscript}
+                        className="p-2 rounded-lg transition-all hover:bg-black/5 active:scale-95"
+                        style={{ color: 'var(--text-muted)' }}
+                        title="Export Transcript"
+                    >
+                        <Download size={16} />
+                    </button>
+                </div>
             </div>
 
             <div className="w-full h-px" style={{ background: 'var(--border-light)' }}></div>

@@ -1,6 +1,6 @@
-import { AudioLines, Sun, Moon, Palette, Bell } from 'lucide-react';
+import { AudioLines, Sun, Moon, Palette, Bell, History } from 'lucide-react';
 
-const Header = ({ theme, onThemeChange }) => {
+const Header = ({ theme, onThemeChange, onHistoryClick }) => {
     const getThemeIcon = () => {
         if (theme === 'light') return <Sun size={16} />;
         if (theme === 'dark') return <Moon size={16} />;
@@ -27,6 +27,18 @@ const Header = ({ theme, onThemeChange }) => {
             </div>
 
             <div className="flex items-center gap-3">
+                <button
+                    onClick={onHistoryClick}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                    style={{ 
+                        background: 'var(--bg-card)',
+                        border: `1px solid var(--border-light)`,
+                        color: 'var(--accent-primary)'
+                    }}
+                    title="View History"
+                >
+                    <History size={16} />
+                </button>
                 <button
                     onClick={onThemeChange}
                     className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-105"

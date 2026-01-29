@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-py"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id        String    @id @default(uuid())
+  title     String    @default("New Chat")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  messages  Message[]
+
+  @@index([updatedAt(sort: Desc)])
+  @@map("sessions")
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  sessionId String   @map("session_id")
+  text      String   @db.Text
+  isUser    Boolean  @map("is_user")
+  timestamp DateTime @default(now())
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("messages")
+}

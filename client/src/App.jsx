@@ -3,7 +3,9 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import PerformanceSidebar from './components/PerformanceSidebar';
 import TranscriptSidebar from './components/TranscriptSidebar';
+import HistorySidebar from './components/HistorySidebar';
 import VoiceInterface from './components/VoiceInterface';
+import SessionsModal from './components/SessionsModal';
 import { useAudioStreaming, useAudioPlayer } from './utils/audio';
 import { Menu, X } from 'lucide-react';
 
@@ -22,6 +24,11 @@ const App = () => {
     return localStorage.getItem('app-theme') || 'light';
   });
 
+  // Session state
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [sessionsModalOpen, setSessionsModalOpen] = useState(false);
+  const [historySidebarOpen, setHistorySidebarOpen] = useState(false);
+
   // Apply theme to document
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -35,6 +42,71 @@ const App = () => {
       return 'light';
     });
   };
+
+  // Session management functions
+  const createNewSession = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/sessions', { method: 'POST' });
+      const session = await res.json();
+      setCurrentSessionId(session.id);
+      localStorage.setItem('currentSessionId', session.id);
+      setMessages([]);
+      console.log('New session created:', session.id);
+      // Trigger a refresh of sessions in the modal if it's open
+      window.dispatchEvent(new Event('sessionCreated'));
+    } catch (error) {
+      console.error('Failed to create session:', error);
+    }
+  };
+
+  const loadSession = async (sessionId) => {
+    try {
+      setCurrentSessionId(sessionId);
+      localStorage.setItem('currentSessionId', sessionId);
+      const res = await fetch(`http://localhost:8000/api/sessions/${sessionId}/messages`);
+      const msgs = await res.json();
+      setMessages(msgs.map(m => ({
+        text: m.text,
+        is_user: m.is_user,
+        timestamp: m.timestamp
+      })));
+      setSessionsModalOpen(false);
+      setHistorySidebarOpen(false); // Close history sidebar when session is loaded
+    } catch (error) {
+      console.error('Failed to load session:', error);
+    }
+  };
+
+  const deleteSession = async (sessionId) => {
+    try {
+      await fetch(`http://localhost:8000/api/sessions/${sessionId}`, { method: 'DELETE' });
+      if (sessionId === currentSessionId) {
+        await createNewSession();
+      }
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+    }
+  };
+
+  // Initialize session on mount
+  useEffect(() => {
+    const savedSessionId = localStorage.getItem('currentSessionId');
+    if (savedSessionId) {
+      // Validate session_id format (UUID)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(savedSessionId)) {
+        loadSession(savedSessionId).catch(() => {
+          // If session doesn't exist in DB, create new one
+          createNewSession();
+        });
+      } else {
+        // Invalid format, create new session
+        createNewSession();
+      }
+    } else {
+      createNewSession();
+    }
+  }, []);
 
   const [metrics, setMetrics] = useState({
     llm_generation: 0,
@@ -74,8 +146,15 @@ const App = () => {
 
   const connectWebSocket = useCallback(() => {
     const connectWebSocketImpl = () => {
+      // Only connect if we have a valid session_id
+      if (!currentSessionId) {
+        console.log('Waiting for session to be created...');
+        return null;
+      }
+      
       // Use environment variable or fallback to localhost
-      const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat';
+      const baseUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat';
+      const wsUrl = `${baseUrl}?session_id=${currentSessionId}`;
       const socket = new WebSocket(wsUrl);
       socket.binaryType = 'arraybuffer';
 
@@ -168,12 +247,14 @@ const App = () => {
     };
 
     return connectWebSocketImpl();
-  }, [playChunk]);
+  }, [currentSessionId, playChunk]);
 
   useEffect(() => {
-    connectWebSocket();
-    return () => ws.current?.close();
-  }, [connectWebSocket]);
+    if (!currentSessionId) return;
+    
+    const socket = connectWebSocket();
+    return () => socket?.close();
+  }, [connectWebSocket, currentSessionId]);
 
   const toggleListening = async () => {
     if (isListening) {
@@ -216,7 +297,11 @@ const App = () => {
 
   return (
     <div className="flex flex-col h-screen app-bg text-gray-900 selection:bg-indigo-200">
-      <Header theme={theme} onThemeChange={cycleTheme} />
+      <Header 
+        theme={theme} 
+        onThemeChange={cycleTheme}
+        onHistoryClick={() => setHistorySidebarOpen(!historySidebarOpen)}
+      />
 
       <main className="flex-1 flex overflow-hidden relative px-10 py-6 gap-10">
         {/* Mobile Menu Buttons */}
@@ -267,22 +352,40 @@ const App = () => {
           />
         </div>
 
-        {/* Right Transcript Sidebar */}
+        {/* Right Transcript Sidebar or History Sidebar */}
         <div className={`
           fixed md:relative inset-y-0 right-0 z-40
           transform transition-transform duration-300 ease-in-out
           ${rightSidebarOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
           w-80 md:w-96 rounded-3xl overflow-hidden shadow-xl
         `}>
-          <TranscriptSidebar
-            messages={messages}
-            isTyping={isTyping}
-            onSendMessage={sendMessage}
-          />
+          {historySidebarOpen ? (
+            <HistorySidebar
+              isOpen={historySidebarOpen}
+              onClose={() => setHistorySidebarOpen(false)}
+              currentSessionId={currentSessionId}
+              onSessionSelect={loadSession}
+            />
+          ) : (
+            <TranscriptSidebar
+              messages={messages}
+              isTyping={isTyping}
+              onSendMessage={sendMessage}
+              onNewSession={createNewSession}
+            />
+          )}
         </div>
       </main>
 
       <Footer />
+
+      <SessionsModal
+        isOpen={sessionsModalOpen}
+        onClose={() => setSessionsModalOpen(false)}
+        currentSessionId={currentSessionId}
+        onSessionSelect={loadSession}
+        onNewSession={createNewSession}
+      />
     </div>
   );
 };

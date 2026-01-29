@@ -13,3 +13,4 @@ numpy
 google-generativeai
 python-json-logger
 webrtcvad
+prisma

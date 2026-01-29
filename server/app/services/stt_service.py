@@ -44,7 +44,7 @@ class STTService:
                 self.dg_connection.on(LiveTranscriptionEvents.Error, on_error)
 
                 options = LiveOptions(
-                    model="nova-2",
+                    model="nova-2-general",
                     language="en-US",
                     smart_format=True,
                     encoding="linear16",

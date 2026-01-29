@@ -78,7 +78,7 @@ const PerformanceSidebar = ({ metrics, logs }) => {
                         <h3 className="text-[10px] font-bold text-cyan-500 uppercase tracking-[0.2em]">System Log</h3>
                     </div>
                     {logs.length === 0 ? (
-                        <div className="text-slate-400 italic opacity-50">No Logs Available...</div>
+                        <div className="text-slate-400 font-mono text-[10px] opacity-50">No Logs Available...</div>
                     ) : (
 
                         <div className="flex-1 overflow-y-auto space-y-2 font-mono text-[10px] custom-scrollbar pr-2 flex flex-col-reverse">
@@ -86,7 +86,7 @@ const PerformanceSidebar = ({ metrics, logs }) => {
                             Let's sticky to standard order but auto-scroll. Actually, flex-col-reverse is easier for checking "latest" at bottom if we want it to stick.
                             But standard console is top-down. 
                             Let's use a standard list with a ref for auto-scrolling. 
-                        */}
+                            */}
                             {[...logs].reverse().map((log, i) => (
                                 <div key={i} className="flex gap-2 items-start animate-fade-in mb-10">
                                     <span className="text-cyan-400/70 select-none text-[10px] mt-0.5">{'>'}</span>

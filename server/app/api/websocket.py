@@ -1,10 +1,11 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from app.services.stt_service import STTService
 from app.services.tts_service import TTSService
 from app.services.llm_service import LLMService
 from app.services.history_service import HistoryService
 from app.services.transcript_service import TranscriptService
 from app.services.vad_service import VADService
+from app.services.session_service import SessionService
 from app.utils.metrics import MetricsTracker
 from app.utils.validation import sanitize_transcript, validate_session_id, sanitize_system_prompt
 from app.utils.sentence_detection import SmartSentenceBuffer
@@ -12,6 +13,7 @@ import asyncio
 import uuid
 import logging
 import json
+import re
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -27,24 +29,31 @@ async def _tts_sentence_to_pcm(tts_service: TTSService, sentence: str, interrupt
     Convert a sentence to PCM audio using TTS service.
     Removed AI STT dependency - transcripts now use original LLM text.
     """
+    import hashlib
+    sentence_hash = hashlib.md5(sentence.encode()).hexdigest()[:8]
+    logger.info(f"TTS generating audio for sentence (hash: {sentence_hash}, gen_id: {gen_id}): {sentence[:50]}...")
+    
     pcm_parts = []
     try:
         async for audio_chunk in tts_service.stream_audio(sentence):
             if interrupt_event.is_set() or gen_id != current_generation_id:
+                logger.info(f"TTS interrupted for sentence hash: {sentence_hash}")
                 return b""
             if audio_chunk:
                 pcm_parts.append(audio_chunk)
-        return b"".join(pcm_parts)
+        result = b"".join(pcm_parts)
+        logger.info(f"TTS completed for sentence hash: {sentence_hash}, audio size: {len(result)} bytes")
+        return result
     except Exception as e:
-        logger.error(f"TTS streaming error: {e}")
+        logger.error(f"TTS streaming error for sentence hash {sentence_hash}: {e}")
         return b""
 
 @router.websocket("/ws/chat")
-async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
+async def websocket_endpoint(websocket: WebSocket, session_id: str = Query(None)):
     client_host = websocket.client.host
     active_connections[client_host] = active_connections.get(client_host, 0) + 1
     
-    if active_connections[client_host] > 5:
+    if active_connections[client_host] > 9:
         await websocket.accept()
         await websocket.send_json({"type": "error", "text": "Too many active sessions from your IP. Please close some tabs."})
         await websocket.close()
@@ -53,14 +62,37 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
 
     await websocket.accept()
     
-    # Validate session ID
-    if not validate_session_id(session_id):
-        await websocket.send_json({"type": "error", "text": "Invalid session ID"})
-        await websocket.close()
-        return
+    # Initialize session service first
+    session_service = SessionService()
+    await session_service.connect()
     
+    # Validate and ensure session exists
     if not session_id:
         session_id = str(uuid.uuid4())
+        # Create new session
+        new_session = await session_service.create_session()
+        session_id = new_session.id
+    else:
+        # Validate session_id format
+        if not validate_session_id(session_id):
+            await websocket.send_json({"type": "error", "text": "Invalid session ID"})
+            await websocket.close()
+            await session_service.disconnect()
+            return
+        
+        # Check if session exists, if not create it
+        try:
+            existing_session = await session_service.prisma.session.find_unique(where={'id': session_id})
+            if not existing_session:
+                # Session doesn't exist, create it
+                new_session = await session_service.create_session()
+                session_id = new_session.id
+        except Exception as e:
+            logger.error(f"Error checking session: {e}")
+            await websocket.send_json({"type": "error", "text": "Session error"})
+            await websocket.close()
+            await session_service.disconnect()
+            return
     
     stt_service = None
     llm_service = LLMService()
@@ -107,6 +139,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
             # Save user message to history using transcript service
             await transcript_service.store_user_message(session_id, transcript)
             
+            # Save user message to session database
+            await session_service.add_message(session_id, transcript, is_user=True)
+            
             # Fetch full history for LLM context
             history = await history_service.get_history(session_id)
             
@@ -124,6 +159,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
             # Initialize smart sentence buffer for this response
             sentence_buffer = SmartSentenceBuffer()
             full_ai_response = ""
+            processed_sentences = set()  # Track processed sentences to avoid duplicates
             
             # Send empty assistant transcript immediately to show the bubble
             await websocket.send_json({"type": "assistant_transcript_start", "is_user": False})
@@ -153,15 +189,35 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
                         break
                     
                     if sentence.strip():
-                        # Remove trailing punctuation to prevent TTS from reading "dot" sounds
-                        clean_sentence = sentence.rstrip('.!?')
+                        # Skip if we've already processed this sentence
+                        sentence_key = sentence.strip()
+                        if sentence_key in processed_sentences:
+                            logger.debug(f"Skipping duplicate sentence: {sentence_key[:50]}...")
+                            continue
+                        processed_sentences.add(sentence_key)
+                        logger.debug(f"Processing sentence: {sentence_key[:50]}...")
                         
-                        # Generate TTS audio with cleaned sentence
-                        pcm = await _tts_sentence_to_pcm(tts_service, clean_sentence.strip(), interrupt_event, gen_id, current_generation_id)
+                        # Clean sentence for TTS - preserve decimal numbers but remove sentence punctuation
+                        clean_sentence = sentence.strip()
                         
-                        # Stop TTS timing on first audio chunk
-                        if metrics.metrics.get("tts_latency", {}).get("start"):
-                            metrics.stop_timing("tts_latency")
+                        # Replace multiple periods (ellipsis) with comma
+                        clean_sentence = clean_sentence.replace('...', ',')
+                        
+                        # Remove sentence-ending periods but preserve decimal points
+                        # Replace period at end of sentence or followed by space (but not in numbers)
+                        clean_sentence = re.sub(r'\.(?!\d)', '', clean_sentence)
+                        
+                        # Remove other trailing punctuation
+                        while clean_sentence and clean_sentence[-1] in '!?,;:':
+                            clean_sentence = clean_sentence[:-1]
+                        
+                        if clean_sentence:  # Only process if there's text left
+                            # Generate TTS audio with cleaned sentence
+                            pcm = await _tts_sentence_to_pcm(tts_service, clean_sentence, interrupt_event, gen_id, current_generation_id)
+                            
+                            # Stop TTS timing on first audio chunk
+                            if metrics.metrics.get("tts_latency", {}).get("start"):
+                                metrics.stop_timing("tts_latency")
                         
                         if interrupt_event.is_set() or gen_id != current_generation_id:
                             break
@@ -177,15 +233,47 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
                 remaining_sentences = sentence_buffer.flush()
                 for sentence in remaining_sentences:
                     if sentence.strip():
-                        # Remove trailing punctuation to prevent TTS from reading "dot" sounds
-                        clean_sentence = sentence.rstrip('.!?')
+                        # Skip if we've already processed this sentence
+                        sentence_key = sentence.strip()
+                        if sentence_key in processed_sentences:
+                            continue
+                        processed_sentences.add(sentence_key)
                         
-                        # Generate TTS audio with cleaned sentence
-                        pcm = await _tts_sentence_to_pcm(tts_service, clean_sentence.strip(), interrupt_event, gen_id, current_generation_id)
+                        # Clean sentence for TTS - preserve decimal numbers but remove sentence punctuation
+                        clean_sentence = sentence.strip()
                         
-                        if not (interrupt_event.is_set() or gen_id != current_generation_id):
-                            if pcm:
-                                await websocket.send_bytes(pcm)
+                        # Replace multiple periods (ellipsis) with comma
+                        clean_sentence = clean_sentence.replace('...', ',')
+                        
+                        # Remove sentence-ending periods but preserve decimal points
+                        # Replace period at end of sentence or followed by space (but not in numbers)
+                        clean_sentence = re.sub(r'\.(?!\d)', '', clean_sentence)
+                        
+                        # Remove other trailing punctuation
+                        while clean_sentence and clean_sentence[-1] in '!?,;:':
+                            clean_sentence = clean_sentence[:-1]
+                        
+                        if clean_sentence:  # Only process if there's text left
+                            # Generate TTS audio with cleaned sentence
+                            clean_sentence = clean_sentence.lower()
+                            pcm = await _tts_sentence_to_pcm(tts_service, clean_sentence, interrupt_event, gen_id, current_generation_id)
+                            
+                            if not (interrupt_event.is_set() or gen_id != current_generation_id):
+                                if pcm:
+                                    await websocket.send_bytes(pcm)
+                        # Replace single periods with nothing (natural pause at sentence end)
+                        # clean_sentence = clean_sentence.replace('.', '')
+                        # # Remove other trailing punctuation
+                        # while clean_sentence and clean_sentence[-1] in '!?,;:':
+                        #     clean_sentence = clean_sentence[:-1]
+                        
+                        # if clean_sentence:  # Only process if there's text left
+                        #     # Generate TTS audio with cleaned sentence
+                        #     pcm = await _tts_sentence_to_pcm(tts_service, clean_sentence, interrupt_event, gen_id, current_generation_id)
+                            
+                        #     if not (interrupt_event.is_set() or gen_id != current_generation_id):
+                        #         if pcm:
+                        #             await websocket.send_bytes(pcm)
             
             # Send the complete agent response as a single transcript at the end
             if not interrupt_event.is_set() and gen_id == current_generation_id:
@@ -195,6 +283,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
                     
                     # Save AI response to history using transcript service
                     await transcript_service.store_agent_message(session_id, full_ai_response)
+                    
+                    # Save AI response to session database
+                    await session_service.add_message(session_id, full_ai_response, is_user=False)
+                    
+                    # Auto-generate title after first exchange (when message count == 2)
+                    messages = await session_service.get_session_messages(session_id)
+                    if len(messages) == 2:
+                        await session_service.auto_title(session_id)
+                    
                     metrics.stop_timing("llm_generation")
                     metrics.stop_timing("total_turnaround")
                     await websocket.send_json({"type": "metrics", "data": metrics.get_all()})
@@ -277,3 +374,4 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
         active_connections[client_host] = max(0, active_connections.get(client_host, 1) - 1)
         if stt_service:
             await stt_service.stop()
+        await session_service.disconnect()

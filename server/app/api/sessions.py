@@ -1,10 +1,14 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from app.services.session_service import SessionService
+from pydantic import BaseModel
 import uuid
 from datetime import datetime
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 service = SessionService()
+
+class CreateSessionRequest(BaseModel):
+    device_id: str
 
 @router.on_event("startup")
 async def startup():
@@ -15,15 +19,15 @@ async def shutdown():
     await service.disconnect()
 
 @router.post("/")
-async def create_session():
-    """Create new session"""
-    session = await service.create_session()
+async def create_session(request: CreateSessionRequest):
+    """Create new session with device ID"""
+    session = await service.create_session(device_id=request.device_id)
     return {"id": session.id, "title": session.title}
 
 @router.get("/")
-async def get_sessions():
-    """Get all sessions"""
-    sessions = await service.get_all_sessions()
+async def get_sessions(device_id: str = Query(..., description="Device ID for filtering sessions")):
+    """Get all sessions for a specific device"""
+    sessions = await service.get_sessions_by_device(device_id)
     result = []
     for s in sessions:
         # Format creation date

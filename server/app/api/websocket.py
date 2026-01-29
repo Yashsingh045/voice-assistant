@@ -164,7 +164,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = Query(None)
             # Send empty assistant transcript immediately to show the bubble
             await websocket.send_json({"type": "assistant_transcript_start", "is_user": False})
             
-            async for chunk in llm_service.get_response(transcript, history=history[:-1]):
+            async for chunk in llm_service.get_response(transcript, history=history[:-1], metrics_tracker=metrics):
                 # If a new turn started or barge-in happened, abort this one
                 if interrupt_event.is_set() or gen_id != current_generation_id:
                     logger.info(f"Generation {gen_id} aborted")
@@ -356,6 +356,24 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = Query(None)
                         clean_prompt = sanitize_system_prompt(new_prompt)
                         llm_service.set_system_prompt(clean_prompt)
                         await websocket.send_json({"type": "status", "text": "Instructions updated."})
+                elif msg.get("type") == "set_response_mode":
+                    mode = msg.get("mode")
+                    if mode in ["faster", "planning", "detailed"]:
+                        llm_service.set_response_mode(mode)
+                        
+                        # Update metrics with new model name
+                        mode_config = {
+                            "faster": "llama-3.1-8b-instant",
+                            "planning": "llama-3.3-70b-versatile",
+                            "detailed": "llama-3.3-70b-versatile"
+                        }
+                        metrics.set_model(mode_config[mode])
+                        
+                        # Send updated metrics to client
+                        await websocket.send_json({"type": "metrics", "data": metrics.get_all()})
+                        await websocket.send_json({"type": "status", "text": f"Response mode set to {mode}"})
+                    else:
+                        await websocket.send_json({"type": "error", "text": "Invalid response mode"})
                 elif msg.get("type") == "text_input":
                     # Handle typed text messages (same as voice input)
                     text_message = msg.get("text", "").strip()

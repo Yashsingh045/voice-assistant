@@ -12,9 +12,26 @@ class SessionService:
     async def disconnect(self):
         await self.prisma.disconnect()
     
-    async def create_session(self):
-        """Create new session"""
-        return await self.prisma.session.create(data={})
+    async def create_session(self, device_id: str = None):
+        """Create new session with optional device ID"""
+        data = {}
+        if device_id:
+            data['deviceId'] = device_id
+        return await self.prisma.session.create(data=data)
+    
+    async def get_sessions_by_device(self, device_id: str):
+        """Get all sessions for a specific device, newest first"""
+        sessions = await self.prisma.session.find_many(
+            where={'deviceId': device_id},
+            order={'updatedAt': 'desc'}
+        )
+        # Manually count messages for each session
+        for session in sessions:
+            message_count = await self.prisma.message.count(
+                where={'sessionId': session.id}
+            )
+            session._count = type('obj', (object,), {'messages': message_count})()
+        return sessions
     
     async def get_all_sessions(self):
         """Get all sessions, newest first"""

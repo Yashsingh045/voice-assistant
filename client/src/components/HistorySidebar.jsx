@@ -6,6 +6,11 @@ const HistorySidebar = ({ isOpen, onClose, currentSessionId, onSessionSelect }) 
     const [loading, setLoading] = useState(false);
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
+    // Get device ID from localStorage
+    const getDeviceId = () => {
+        return localStorage.getItem('deviceId') || '';
+    };
+
     useEffect(() => {
         if (isOpen) {
             fetchSessions();
@@ -24,7 +29,8 @@ const HistorySidebar = ({ isOpen, onClose, currentSessionId, onSessionSelect }) 
     const fetchSessions = async () => {
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:8000/api/sessions');
+            const deviceId = getDeviceId();
+            const res = await fetch(`http://localhost:8000/api/sessions?device_id=${deviceId}`);
             const data = await res.json();
             setSessions(data);
         } catch (error) {

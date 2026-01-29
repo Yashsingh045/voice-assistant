@@ -10,7 +10,7 @@ const Footer = () => {
                 </span>
                 <span className="flex items-center gap-1.5">
                     <ShieldCheck size={10} style={{ color: 'var(--accent-success)' }} />
-                    Quantum Encryption
+                    Secured Sessions 
                 </span>
                 <span className="flex items-center gap-1.5">
                     <Activity size={10} style={{ color: 'var(--accent-warning)' }} />
@@ -19,7 +19,7 @@ const Footer = () => {
             </div>
 
             <div className="flex items-center gap-4">
-                <span>V2.4 • Stable</span>
+                <span>V1.0 • Stable</span>
                 <span>•</span>
                 <span>Production Ready</span>
             </div>

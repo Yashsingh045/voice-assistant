@@ -1,7 +1,7 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect } from 'react';
 import { Send, Clock, Download, Plus } from 'lucide-react';
 
-const MessageBubble = ({ message }) => {
+const MessageBubble = ({ message, theme }) => {
     const isUser = message.is_user;
     const isStreaming = message.isStreaming;
     const messageTime = message.timestamp ?
@@ -10,6 +10,19 @@ const MessageBubble = ({ message }) => {
 
     // Determine Label
     let label = isUser ? 'USER' : 'NEXUS';
+
+    // Determine background based on theme
+    const getMessageBackground = () => {
+        if (theme === 'multicolor') {
+            if (isUser) {
+                return 'linear-gradient(135deg, #10b981, #06b6d4)'; // Teal gradient for user
+            } else {
+                return 'linear-gradient(135deg, #8b5cf6, #d946ef)'; // Purple-pink gradient for assistant
+            }
+        }
+        // Default for light and dark themes
+        return isUser ? 'var(--accent-primary)' : 'var(--bg-secondary)';
+    };
 
     return (
         <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-6 animate-fade-in`}>
@@ -24,17 +37,17 @@ const MessageBubble = ({ message }) => {
             <div
                 className="max-w-[90%] px-5 py-4 text-xs md:text-sm leading-relaxed font-medium shadow-sm transition-all"
                 style={{
-                    background: isUser ? 'var(--accent-primary)' : 'var(--bg-secondary)',
-                    color: isUser ? '#ffffff' : 'var(--text-primary)',
-                    border: isUser ? 'none' : `1px solid var(--border-light)`,
+                    background: getMessageBackground(),
+                    color: isUser ? '#ffffff' : (theme === 'multicolor' ? '#ffffff' : 'var(--text-primary)'),
+                    border: (isUser || theme === 'multicolor') ? 'none' : `1px solid var(--border-light)`,
                     borderRadius: isUser ? '1.25rem 1.25rem 0.25rem 1.25rem' : '1.25rem 1.25rem 1.25rem 0.25rem'
                 }}
             >
                 {isStreaming ? (
                     <div className="">
-                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: 'var(--text-secondary)' }}></div>
-                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: 'var(--text-secondary)', animationDelay: '0.1s' }}></div>
-                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: 'var(--text-secondary)', animationDelay: '0.2s' }}></div>
+                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: theme === 'multicolor' ? '#ffffff' : 'var(--text-secondary)' }}></div>
+                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: theme === 'multicolor' ? '#ffffff' : 'var(--text-secondary)', animationDelay: '0.1s' }}></div>
+                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: theme === 'multicolor' ? '#ffffff' : 'var(--text-secondary)', animationDelay: '0.2s' }}></div>
                     </div>
                 ) : (
                     message.text
@@ -44,7 +57,7 @@ const MessageBubble = ({ message }) => {
     );
 };
 
-const TranscriptSidebar = ({ messages, isTyping, onSendMessage, onNewSession }) => {
+const TranscriptSidebar = ({ messages, isTyping, onSendMessage, onNewSession, theme, isConnected }) => {
     const scrollRef = useRef(null);
     const inputRef = useRef(null);
 
@@ -111,25 +124,35 @@ const TranscriptSidebar = ({ messages, isTyping, onSendMessage, onNewSession }) 
                     <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5" style={{ color: 'var(--text-muted)' }}>Live Transcript</h2>
                     <p className="text-[11px] font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                         <span className="w-2 h-2 rounded-full relative flex items-center justify-center">
-                            <span className="w-full h-full rounded-full absolute inline-flex animate-ping opacity-75" style={{ backgroundColor: 'var(--accent-success)' }}></span>
-                            <span className="w-1.5 h-1.5 rounded-full relative inline-flex" style={{ backgroundColor: 'var(--accent-success)' }}></span>
+                            <span className={`w-full h-full rounded-full absolute inline-flex ${isConnected ? 'animate-ping' : ''} opacity-75`} style={{ backgroundColor: isConnected ? 'var(--accent-success)' : 'var(--accent-danger)' }}></span>
+                            <span className="w-1.5 h-1.5 rounded-full relative inline-flex" style={{ backgroundColor: isConnected ? 'var(--accent-success)' : 'var(--accent-danger)' }}></span>
                         </span>
-                        Session Active
+                        {isConnected ? 'Session Active' : 'Session Inactive'}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => onNewSession && onNewSession()}
-                        className="p-2 rounded-lg transition-all hover:bg-black/5 active:scale-95"
-                        style={{ color: 'var(--accent-primary)' }}
+                        className="p-2 rounded-lg transition-all active:scale-95"
+                        style={{ 
+                            color: 'var(--accent-primary)',
+                            background: 'transparent'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         title="New session"
                     >
                         <Plus size={16} />
                     </button>
                     <button
                         onClick={exportTranscript}
-                        className="p-2 rounded-lg transition-all hover:bg-black/5 active:scale-95"
-                        style={{ color: 'var(--text-muted)' }}
+                        className="p-2 rounded-lg transition-all active:scale-95"
+                        style={{ 
+                            color: 'var(--text-muted)',
+                            background: 'transparent'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         title="Export Transcript"
                     >
                         <Download size={16} />
@@ -154,18 +177,18 @@ const TranscriptSidebar = ({ messages, isTyping, onSendMessage, onNewSession }) 
                 ) : (
                     <>
                         {messages.map((msg, i) => (
-                            <MessageBubble key={i} message={msg} />
+                            <MessageBubble key={i} message={msg} theme={theme} />
                         ))}
                         {isTyping && (
                             <div className="flex flex-col items-start mb-6 animate-pulse">
                                 <span className="text-[10px] font-bold uppercase tracking-wider mb-1.5 px-1" style={{ color: 'var(--text-muted)' }}>
                                     NEXUS • typing...
                                 </span>
-                                <div className="px-5 py-4 rounded-2xl rounded-tl-sm" style={{ background: 'var(--bg-secondary)', border: `1px solid var(--border-light)` }}>
+                                <div className="px-5 py-4 rounded-2xl rounded-tl-sm" style={{ background: theme === 'multicolor' ? 'linear-gradient(135deg, #8b5cf6, #d946ef)' : 'var(--bg-secondary)', border: theme === 'multicolor' ? 'none' : `1px solid var(--border-light)` }}>
                                     <div className="flex gap-1.5">
-                                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: 'var(--text-muted)' }}></div>
-                                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: 'var(--text-muted)', animationDelay: '0.1s' }}></div>
-                                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: 'var(--text-muted)', animationDelay: '0.2s' }}></div>
+                                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: theme === 'multicolor' ? '#ffffff' : 'var(--text-muted)' }}></div>
+                                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: theme === 'multicolor' ? '#ffffff' : 'var(--text-muted)', animationDelay: '0.1s' }}></div>
+                                        <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: theme === 'multicolor' ? '#ffffff' : 'var(--text-muted)', animationDelay: '0.2s' }}></div>
                                     </div>
                                 </div>
                             </div>
@@ -175,7 +198,7 @@ const TranscriptSidebar = ({ messages, isTyping, onSendMessage, onNewSession }) 
             </div>
 
             {/* Input area */}
-            <div className="px-6 py-5" style={{ borderTop: `1px solid var(--border-light)`, background: 'rgba(255,255,255,0.02)' }}>
+            <div className="px-6 py-5" style={{ borderTop: `1px solid var(--border-light)`, background: 'var(--bg-card)' }}>
                 <form onSubmit={handleSubmit} className="relative group">
                     <input
                         ref={inputRef}
@@ -191,7 +214,7 @@ const TranscriptSidebar = ({ messages, isTyping, onSendMessage, onNewSession }) 
                     <button
                         type="submit"
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl text-white transition-all hover:scale-105 active:scale-95 shadow-lg"
-                        style={{ background: 'var(--accent-primary)' }}
+                        style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' }}
                     >
                         <Send size={16} fill="white" />
                     </button>

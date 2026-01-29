@@ -1,4 +1,17 @@
 .vercel
 .env*.local
 *.vscode
-*.txt
+# Ignore log files but keep requirements.txt
+*.log
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+# Ignore node modules
+node_modules/
+# Ignore build outputs
+dist/
+build/
+*.egg-info/

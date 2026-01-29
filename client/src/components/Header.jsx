@@ -1,4 +1,4 @@
-import { AudioLines, Sun, Moon, Palette, Bell, History } from 'lucide-react';
+import { AudioLines, Sun, Moon, Palette, History } from 'lucide-react';
 
 const Header = ({ theme, onThemeChange, onHistoryClick }) => {
     const getThemeIcon = () => {
@@ -29,7 +29,7 @@ const Header = ({ theme, onThemeChange, onHistoryClick }) => {
             <div className="flex items-center gap-3">
                 <button
                     onClick={onHistoryClick}
-                    className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all hover:scale-105"
                     style={{ 
                         background: 'var(--bg-card)',
                         border: `1px solid var(--border-light)`,
@@ -38,10 +38,11 @@ const Header = ({ theme, onThemeChange, onHistoryClick }) => {
                     title="View History"
                 >
                     <History size={16} />
+                    <span className="text-xs font-bold">History</span>
                 </button>
                 <button
                     onClick={onThemeChange}
-                    className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all hover:scale-105"
                     style={{ 
                         background: theme === 'multicolor' ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : 'var(--bg-card)',
                         border: `1px solid var(--border-light)`,
@@ -49,10 +50,11 @@ const Header = ({ theme, onThemeChange, onHistoryClick }) => {
                     }}
                 >
                     {getThemeIcon()}
+                    <span className="text-xs font-bold capitalize">{theme}</span>
                 </button>
-                <button className="w-9 h-9 rounded-lg flex items-center justify-center transition-all" style={{ background: 'var(--bg-card)', border: `1px solid var(--border-light)`, color: 'var(--text-secondary)' }}>
+                {/* <button className="w-9 h-9 rounded-lg flex items-center justify-center transition-all" style={{ background: 'var(--bg-card)', border: `1px solid var(--border-light)`, color: 'var(--text-secondary)' }}>
                     <Bell size={16} />
-                </button>
+                </button> */}
                 <div className="w-9 h-9 rounded-full overflow-hidden" style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)' }}>
                     <img
                         src="https://api.dicebear.com/9.x/avataaars/svg?seed=x"

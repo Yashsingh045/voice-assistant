@@ -7,7 +7,7 @@ import HistorySidebar from './components/HistorySidebar';
 import VoiceInterface from './components/VoiceInterface';
 import SessionsModal from './components/SessionsModal';
 import { useAudioStreaming, useAudioPlayer } from './utils/audio';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, History, MessageSquare, Activity } from 'lucide-react';
 
 const App = () => {
   const [messages, setMessages] = useState([]);
@@ -18,11 +18,26 @@ const App = () => {
   // Sidebar visibility state for mobile
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [activeMobileSidebar, setActiveMobileSidebar] = useState(null); // 'history', 'transcript', 'performance'
 
   // Theme state: 'light', 'dark', 'multicolor'
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('app-theme') || 'light';
   });
+
+  // Device ID for session isolation
+  const getDeviceId = () => {
+    let deviceId = localStorage.getItem('deviceId');
+    if (!deviceId) {
+      // Generate a unique device ID
+      deviceId = `device_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+      localStorage.setItem('deviceId', deviceId);
+    }
+    return deviceId;
+  };
+
+  const deviceId = getDeviceId();
 
   // Session state
   const [currentSessionId, setCurrentSessionId] = useState(null);
@@ -46,7 +61,13 @@ const App = () => {
   // Session management functions
   const createNewSession = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/sessions', { method: 'POST' });
+      const res = await fetch('http://localhost:8000/api/sessions', { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ device_id: deviceId })
+      });
       const session = await res.json();
       setCurrentSessionId(session.id);
       localStorage.setItem('currentSessionId', session.id);
@@ -72,21 +93,14 @@ const App = () => {
       })));
       setSessionsModalOpen(false);
       setHistorySidebarOpen(false); // Close history sidebar when session is loaded
+      setActiveMobileSidebar(null); // Close mobile sidebar
+      setMobileDrawerOpen(false); // Close mobile drawer
     } catch (error) {
       console.error('Failed to load session:', error);
     }
   };
 
-  const deleteSession = async (sessionId) => {
-    try {
-      await fetch(`http://localhost:8000/api/sessions/${sessionId}`, { method: 'DELETE' });
-      if (sessionId === currentSessionId) {
-        await createNewSession();
-      }
-    } catch (error) {
-      console.error('Failed to delete session:', error);
-    }
-  };
+
 
   // Initialize session on mount
   useEffect(() => {
@@ -119,6 +133,7 @@ const App = () => {
   const [systemLogs, setSystemLogs] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [status, setStatus] = useState("I'm ready to help with your task");
+  const [isConnected, setIsConnected] = useState(false);
 
   const ws = useRef(null);
 
@@ -161,6 +176,7 @@ const App = () => {
       socket.onopen = () => {
         console.log('WebSocket Connected');
         ws.current = socket;
+        setIsConnected(true);
       };
 
       socket.onmessage = async (event) => {
@@ -240,6 +256,7 @@ const App = () => {
 
       socket.onclose = () => {
         console.log('WebSocket Disconnected');
+        setIsConnected(false);
         setTimeout(connectWebSocketImpl, 3000);
       };
 
@@ -304,22 +321,84 @@ const App = () => {
       />
 
       <main className="flex-1 flex overflow-hidden relative px-10 py-6 gap-10">
-        {/* Mobile Menu Buttons */}
+        {/* Mobile Menu Button - Single Three Bars */}
         <button
-          onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
-          className="md:hidden fixed top-24 left-4 z-50 w-10 h-10 bg-white border-2 border-indigo-200 rounded-lg flex items-center justify-center shadow-lg hover:border-indigo-400 transition-all"
-          aria-label="Toggle Performance Sidebar"
+          onClick={() => setMobileDrawerOpen(!mobileDrawerOpen)}
+          className="md:hidden fixed top-24 right-4 z-50 w-12 h-12 rounded-xl flex items-center justify-center shadow-lg transition-all"
+          style={{
+            background: mobileDrawerOpen ? 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' : 'var(--bg-card)',
+            border: `2px solid ${mobileDrawerOpen ? 'transparent' : 'var(--border-light)'}`,
+            color: mobileDrawerOpen ? 'white' : 'var(--accent-primary)'
+          }}
+          aria-label="Toggle Menu"
         >
-          {leftSidebarOpen ? <X size={20} className="text-indigo-600" /> : <Menu size={20} className="text-indigo-600" />}
+          {mobileDrawerOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
 
-        <button
-          onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
-          className="md:hidden fixed top-24 right-4 z-50 w-10 h-10 bg-white border-2 border-pink-200 rounded-lg flex items-center justify-center shadow-lg hover:border-pink-400 transition-all"
-          aria-label="Toggle Transcript Sidebar"
+        {/* Mobile Drawer */}
+        <div className={`
+          md:hidden fixed top-40 right-4 z-40
+          transform transition-all duration-300 ease-in-out
+          ${mobileDrawerOpen ? 'translate-x-0 opacity-100' : 'translate-x-[120%] opacity-0'}
+          rounded-2xl shadow-2xl overflow-hidden
+        `}
+        style={{
+          background: 'var(--bg-card)',
+          border: `1px solid var(--border-light)`,
+          backdropFilter: 'blur(20px)'
+        }}
         >
-          {rightSidebarOpen ? <X size={20} className="text-pink-600" /> : <Menu size={20} className="text-pink-600" />}
-        </button>
+          <div className="flex flex-col p-2 gap-2 min-w-[180px]">
+            <button
+              onClick={() => {
+                setActiveMobileSidebar('history');
+                setHistorySidebarOpen(true);
+                setMobileDrawerOpen(false);
+              }}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:scale-105"
+              style={{
+                background: activeMobileSidebar === 'history' ? 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' : 'transparent',
+                color: activeMobileSidebar === 'history' ? 'white' : 'var(--text-primary)'
+              }}
+            >
+              <History size={18} />
+              <span className="text-sm font-bold">History</span>
+            </button>
+            
+            <button
+              onClick={() => {
+                setActiveMobileSidebar('transcript');
+                setHistorySidebarOpen(false);
+                setRightSidebarOpen(true);
+                setMobileDrawerOpen(false);
+              }}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:scale-105"
+              style={{
+                background: activeMobileSidebar === 'transcript' ? 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' : 'transparent',
+                color: activeMobileSidebar === 'transcript' ? 'white' : 'var(--text-primary)'
+              }}
+            >
+              <MessageSquare size={18} />
+              <span className="text-sm font-bold">Transcript</span>
+            </button>
+            
+            <button
+              onClick={() => {
+                setActiveMobileSidebar('performance');
+                setLeftSidebarOpen(true);
+                setMobileDrawerOpen(false);
+              }}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:scale-105"
+              style={{
+                background: activeMobileSidebar === 'performance' ? 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' : 'transparent',
+                color: activeMobileSidebar === 'performance' ? 'white' : 'var(--text-primary)'
+              }}
+            >
+              <Activity size={18} />
+              <span className="text-sm font-bold">Performance</span>
+            </button>
+          </div>
+        </div>
 
         {/* Left Diagnostics Sidebar */}
         <div className={`
@@ -328,16 +407,33 @@ const App = () => {
           ${leftSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           w-90 md:w-96 rounded-3xl overflow-hidden shadow-xl
         `}>
+          {/* Mobile Close Button */}
+          <button
+            onClick={() => {
+              setLeftSidebarOpen(false);
+              setActiveMobileSidebar(null);
+            }}
+            className="md:hidden absolute top-4 right-4 z-50 w-8 h-8 rounded-lg flex items-center justify-center shadow-lg transition-all"
+            style={{
+              background: 'var(--bg-card)',
+              border: `1px solid var(--border-light)`,
+              color: 'var(--text-primary)'
+            }}
+          >
+            <X size={16} />
+          </button>
           <PerformanceSidebar metrics={metrics} logs={systemLogs} />
         </div>
 
         {/* Overlay for mobile when sidebar is open */}
-        {(leftSidebarOpen || rightSidebarOpen) && (
+        {(leftSidebarOpen || rightSidebarOpen || mobileDrawerOpen) && (
           <div
             className="md:hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-30"
             onClick={() => {
               setLeftSidebarOpen(false);
               setRightSidebarOpen(false);
+              setMobileDrawerOpen(false);
+              setActiveMobileSidebar(null);
             }}
           />
         )}
@@ -349,6 +445,7 @@ const App = () => {
             status={status}
             audioData={audioData}
             onToggle={toggleListening}
+            websocket={ws.current}
           />
         </div>
 
@@ -356,13 +453,32 @@ const App = () => {
         <div className={`
           fixed md:relative inset-y-0 right-0 z-40
           transform transition-transform duration-300 ease-in-out
-          ${rightSidebarOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
+          ${rightSidebarOpen || historySidebarOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
           w-80 md:w-96 rounded-3xl overflow-hidden shadow-xl
         `}>
+          {/* Mobile Close Button */}
+          <button
+            onClick={() => {
+              setRightSidebarOpen(false);
+              setHistorySidebarOpen(false);
+              setActiveMobileSidebar(null);
+            }}
+            className="md:hidden absolute top-4 left-4 z-50 w-8 h-8 rounded-lg flex items-center justify-center shadow-lg transition-all"
+            style={{
+              background: 'var(--bg-card)',
+              border: `1px solid var(--border-light)`,
+              color: 'var(--text-primary)'
+            }}
+          >
+            <X size={16} />
+          </button>
           {historySidebarOpen ? (
             <HistorySidebar
               isOpen={historySidebarOpen}
-              onClose={() => setHistorySidebarOpen(false)}
+              onClose={() => {
+                setHistorySidebarOpen(false);
+                setActiveMobileSidebar(null);
+              }}
               currentSessionId={currentSessionId}
               onSessionSelect={loadSession}
             />
@@ -372,6 +488,8 @@ const App = () => {
               isTyping={isTyping}
               onSendMessage={sendMessage}
               onNewSession={createNewSession}
+              theme={theme}
+              isConnected={isConnected}
             />
           )}
         </div>

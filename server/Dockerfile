@@ -1,24 +1,40 @@
 # Use a base Python image
 FROM python:3.11-slim
 
-# Install system dependencies required for PyAudio and PortAudio
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     portaudio19-dev \
     python3-all-dev \
-    && rm -rf /var/lib/apt/lists/*  # Clean up cache to reduce image size
+    curl \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory inside the container
+# Install Node.js for Prisma CLI
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set the working directory
 WORKDIR /app
 
-# Copy the requirements.txt to the container
+# Copy requirements and install Python dependencies
 COPY requirements.txt .
-
-# Install the Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code to the container
+# Copy Prisma schema and generate client
+COPY prisma ./prisma
+RUN prisma generate
+
+# Copy the rest of the application
 COPY . .
 
-# Ensure your app is run with the correct entry point
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Create logs directory
+RUN mkdir -p logs
+
+# Expose port
+EXPOSE 8000
+
+# Run migrations and start server
+CMD prisma migrate deploy && uvicorn app.main:app --host 0.0.0.0 --port 8000

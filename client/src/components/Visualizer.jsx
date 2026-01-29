@@ -15,10 +15,10 @@ const Visualizer = ({ audioData, isListening }) => {
     };
 
     return (
-        <div className="flex items-center justify-center gap-[3px] h-32 w-full max-w-lg mx-auto overflow-hidden">
+        <div className="flex items-center justify-center gap-[3px] h-32 w-full max-w-lg mx-auto overflow-visible">
             {bars.map((_, i) => {
                 const rawValue = audioData ? audioData[i % audioData.length] : 0;
-                const scale = isListening ? Math.max(0.1, rawValue / 128) : 0.05;
+                const scale = isListening ? Math.max(0.01, rawValue / 128) : 0.035;
                 const height = `${scale * 100}%`;
                 const barColor = getBarColor(i);
 

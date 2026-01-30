@@ -49,7 +49,20 @@ async def _tts_sentence_to_pcm(tts_service: TTSService, sentence: str, interrupt
         return b""
 
 @router.websocket("/ws/chat")
-async def websocket_endpoint(websocket: WebSocket, session_id: str = Query(None), device_id: str = Query(...)):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    session_id: str = Query(None),
+    device_id: str = Query(None),
+):
+    if not device_id:
+        await websocket.accept()
+        await websocket.send_json({
+            "type": "error",
+            "text": "device_id is required"
+        })
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
 
     # Replace existing connection for same device
@@ -69,8 +82,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = Query(None)
     # Validate and ensure session exists
     if not session_id:
         session_id = str(uuid.uuid4())
-        # Create new session
-        new_session = await session_service.create_session()
+        # Create new session with device_id
+        new_session = await session_service.create_session(device_id=device_id)
         session_id = new_session.id
     else:
         # Validate session_id format
@@ -80,16 +93,30 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = Query(None)
             await session_service.disconnect()
             return
         
-        # Check if session exists, if not create it
+        # Check if session exists and belongs to device
         try:
-            existing_session = await session_service.prisma.session.find_unique(where={'id': session_id})
-            if not existing_session:
-                # Session doesn't exist, create it
-                new_session = await session_service.create_session()
+            existing_session = await session_service.prisma.session.find_unique(
+                where={'id': session_id}
+            )
+            
+            # If session doesn't exist OR belongs to another device, create new one
+            if not existing_session or existing_session.deviceId != device_id:
+                if existing_session:
+                    logger.warning(f"Session {session_id} device mismatch. Client: {device_id}, Session: {existing_session.deviceId}")
+                
+                # Create new session for this device
+                new_session = await session_service.create_session(device_id=device_id)
                 session_id = new_session.id
+                
+                # Notify client about new session ID so it can update local state
+                await websocket.send_json({
+                    "type": "session_reset", 
+                    "sessionId": session_id,
+                    "text": "Session reset due to device mismatch"
+                })
         except Exception as e:
-            logger.error(f"Error checking session: {e}")
-            await websocket.send_json({"type": "error", "text": "Session error"})
+            logger.error(f"Error checking session: {e}", exc_info=True)
+            await websocket.send_json({"type": "error", "text": "Session validation error"})
             await websocket.close()
             await session_service.disconnect()
             return

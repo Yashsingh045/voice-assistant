@@ -12,12 +12,13 @@ class SessionService:
     async def disconnect(self):
         await self.prisma.disconnect()
     
-    async def create_session(self, device_id: str = None):
-        """Create new session with optional device ID"""
-        data = {}
-        if device_id:
-            data['deviceId'] = device_id
-        return await self.prisma.session.create(data=data)
+    async def create_session(self, device_id: str):
+        """Create new session with device ID"""
+        return await self.prisma.session.create(
+            data={
+                "deviceId": device_id
+            }
+        )
     
     async def get_sessions_by_device(self, device_id: str):
         """Get all sessions for a specific device, newest first"""

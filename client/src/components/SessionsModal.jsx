@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, MessageSquare, Trash2, Plus } from 'lucide-react';
+import { API_URL } from '../config';
 
 const SessionsModal = ({ isOpen, onClose, currentSessionId, onSessionSelect, onNewSession }) => {
     const [sessions, setSessions] = useState([]);
@@ -24,7 +25,7 @@ const SessionsModal = ({ isOpen, onClose, currentSessionId, onSessionSelect, onN
     const fetchSessions = async () => {
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:8000/api/sessions');
+            const res = await fetch(`${API_URL}/api/sessions/`);
             const data = await res.json();
             setSessions(data);
         } catch (error) {
@@ -37,7 +38,7 @@ const SessionsModal = ({ isOpen, onClose, currentSessionId, onSessionSelect, onN
     const handleDelete = async (id, e) => {
         e.stopPropagation();
         try {
-            await fetch(`http://localhost:8000/api/sessions/${id}`, { method: 'DELETE' });
+            await fetch(`${API_URL}/api/sessions/${id}`, { method: 'DELETE' });
             fetchSessions();
             setDeleteConfirmId(null);
             if (id === currentSessionId) {
@@ -146,7 +147,7 @@ const SessionsModal = ({ isOpen, onClose, currentSessionId, onSessionSelect, onN
 
                 {/* Delete Confirmation Popup - Centered overlay on top of entire modal */}
                 {deleteConfirmId && (
-                    <div 
+                    <div
                         className="absolute inset-0 flex items-center justify-center z-50 rounded-2xl"
                         style={{ background: 'rgba(0, 0, 0, 0.7)' }}
                         onClick={(e) => {
@@ -154,7 +155,7 @@ const SessionsModal = ({ isOpen, onClose, currentSessionId, onSessionSelect, onN
                             handleCancelDelete(e);
                         }}
                     >
-                        <div 
+                        <div
                             className="px-6 py-4 rounded-xl shadow-xl"
                             style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)' }}
                             onClick={(e) => e.stopPropagation()}
@@ -166,7 +167,7 @@ const SessionsModal = ({ isOpen, onClose, currentSessionId, onSessionSelect, onN
                                 <button
                                     onClick={(e) => handleCancelDelete(e)}
                                     className="px-4 py-2 text-sm rounded-lg transition-all hover:opacity-80"
-                                    style={{ 
+                                    style={{
                                         background: 'var(--bg-secondary)',
                                         color: 'var(--text-secondary)',
                                         border: '1px solid var(--border-light)'
@@ -177,7 +178,7 @@ const SessionsModal = ({ isOpen, onClose, currentSessionId, onSessionSelect, onN
                                 <button
                                     onClick={(e) => handleDelete(deleteConfirmId, e)}
                                     className="px-4 py-2 text-sm rounded-lg transition-all hover:opacity-90"
-                                    style={{ 
+                                    style={{
                                         background: '#ef4444',
                                         color: 'white'
                                     }}

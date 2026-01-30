@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, MessageSquare, Trash2, Clock } from 'lucide-react';
+import { API_URL } from '../config';
 
 const HistorySidebar = ({ isOpen, onClose, currentSessionId, onSessionSelect }) => {
     const [sessions, setSessions] = useState([]);
@@ -30,7 +31,7 @@ const HistorySidebar = ({ isOpen, onClose, currentSessionId, onSessionSelect }) 
         setLoading(true);
         try {
             const deviceId = getDeviceId();
-            const res = await fetch(`http://localhost:8000/api/sessions?device_id=${deviceId}`);
+            const res = await fetch(`${API_URL}/api/sessions/?device_id=${deviceId}`);
             const data = await res.json();
             setSessions(data);
         } catch (error) {
@@ -43,7 +44,7 @@ const HistorySidebar = ({ isOpen, onClose, currentSessionId, onSessionSelect }) 
     const handleDelete = async (id, e) => {
         e.stopPropagation();
         try {
-            await fetch(`http://localhost:8000/api/sessions/${id}`, { method: 'DELETE' });
+            await fetch(`${API_URL}/api/sessions/${id}`, { method: 'DELETE' });
             fetchSessions();
             setDeleteConfirmId(null);
         } catch (error) {
@@ -150,7 +151,7 @@ const HistorySidebar = ({ isOpen, onClose, currentSessionId, onSessionSelect }) 
 
             {/* Delete Confirmation Popup */}
             {deleteConfirmId && (
-                <div 
+                <div
                     className="absolute inset-0 flex items-center justify-center z-50 rounded-3xl"
                     style={{ background: 'rgba(0, 0, 0, 0.7)' }}
                     onClick={(e) => {
@@ -158,7 +159,7 @@ const HistorySidebar = ({ isOpen, onClose, currentSessionId, onSessionSelect }) 
                         handleCancelDelete(e);
                     }}
                 >
-                    <div 
+                    <div
                         className="px-6 py-4 rounded-xl shadow-2xl"
                         style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)' }}
                         onClick={(e) => e.stopPropagation()}
@@ -170,7 +171,7 @@ const HistorySidebar = ({ isOpen, onClose, currentSessionId, onSessionSelect }) 
                             <button
                                 onClick={(e) => handleCancelDelete(e)}
                                 className="px-4 py-2 text-sm rounded-lg transition-all hover:opacity-80"
-                                style={{ 
+                                style={{
                                     background: 'var(--bg-secondary)',
                                     color: 'var(--text-secondary)',
                                     border: '1px solid var(--border-light)'
@@ -181,7 +182,7 @@ const HistorySidebar = ({ isOpen, onClose, currentSessionId, onSessionSelect }) 
                             <button
                                 onClick={(e) => handleDelete(deleteConfirmId, e)}
                                 className="px-4 py-2 text-sm rounded-lg transition-all hover:opacity-90"
-                                style={{ 
+                                style={{
                                     background: '#ef4444',
                                     color: 'white'
                                 }}

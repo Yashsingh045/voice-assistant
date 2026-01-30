@@ -8,6 +8,7 @@ import VoiceInterface from './components/VoiceInterface';
 import SessionsModal from './components/SessionsModal';
 import { useAudioStreaming, useAudioPlayer } from './utils/audio';
 import { Menu, X, History, MessageSquare, Activity } from 'lucide-react';
+import { API_URL, WS_URL } from './config';
 
 const App = () => {
   const [messages, setMessages] = useState([]);
@@ -61,7 +62,7 @@ const App = () => {
   // Session management functions
   const createNewSession = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/sessions', { 
+      const res = await fetch(`${API_URL}/api/sessions/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -84,7 +85,7 @@ const App = () => {
     try {
       setCurrentSessionId(sessionId);
       localStorage.setItem('currentSessionId', sessionId);
-      const res = await fetch(`http://localhost:8000/api/sessions/${sessionId}/messages`);
+      const res = await fetch(`${API_URL}/api/sessions/${sessionId}/messages`);
       const msgs = await res.json();
       setMessages(msgs.map(m => ({
         text: m.text,
@@ -166,9 +167,9 @@ const App = () => {
         console.log('Waiting for session to be created...');
         return null;
       }
-      
+
       // Use environment variable or fallback to localhost
-      const baseUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat';
+      const baseUrl = WS_URL;
       const wsUrl = `${baseUrl}?session_id=${currentSessionId}`;
       const socket = new WebSocket(wsUrl);
       socket.binaryType = 'arraybuffer';
@@ -268,7 +269,7 @@ const App = () => {
 
   useEffect(() => {
     if (!currentSessionId) return;
-    
+
     const socket = connectWebSocket();
     return () => socket?.close();
   }, [connectWebSocket, currentSessionId]);
@@ -314,8 +315,8 @@ const App = () => {
 
   return (
     <div className="flex flex-col h-screen app-bg text-gray-900 selection:bg-indigo-200">
-      <Header 
-        theme={theme} 
+      <Header
+        theme={theme}
         onThemeChange={cycleTheme}
         onHistoryClick={() => setHistorySidebarOpen(!historySidebarOpen)}
       />
@@ -342,11 +343,11 @@ const App = () => {
           ${mobileDrawerOpen ? 'translate-x-0 opacity-100' : 'translate-x-[120%] opacity-0'}
           rounded-2xl shadow-2xl overflow-hidden
         `}
-        style={{
-          background: 'var(--bg-card)',
-          border: `1px solid var(--border-light)`,
-          backdropFilter: 'blur(20px)'
-        }}
+          style={{
+            background: 'var(--bg-card)',
+            border: `1px solid var(--border-light)`,
+            backdropFilter: 'blur(20px)'
+          }}
         >
           <div className="flex flex-col p-2 gap-2 min-w-[180px]">
             <button
@@ -364,7 +365,7 @@ const App = () => {
               <History size={18} />
               <span className="text-sm font-bold">History</span>
             </button>
-            
+
             <button
               onClick={() => {
                 setActiveMobileSidebar('transcript');
@@ -381,7 +382,7 @@ const App = () => {
               <MessageSquare size={18} />
               <span className="text-sm font-bold">Transcript</span>
             </button>
-            
+
             <button
               onClick={() => {
                 setActiveMobileSidebar('performance');

@@ -9,6 +9,7 @@ datasource db {
 
 model Session {
   id        String    @id @default(uuid())
+  deviceId  String    @map("device_id")
   title     String    @default("New Chat")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

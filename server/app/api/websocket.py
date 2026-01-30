@@ -19,7 +19,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Simple Rate Limiting / Connection Tracking
-active_connections = {}
+active_connections: dict[str, WebSocket] = {}
 
 from app.utils.audio_utils import process_audio_chunk
 
@@ -49,18 +49,18 @@ async def _tts_sentence_to_pcm(tts_service: TTSService, sentence: str, interrupt
         return b""
 
 @router.websocket("/ws/chat")
-async def websocket_endpoint(websocket: WebSocket, session_id: str = Query(None)):
-    client_host = websocket.client.host
-    active_connections[client_host] = active_connections.get(client_host, 0) + 1
-    
-    if active_connections[client_host] > 9:
-        await websocket.accept()
-        await websocket.send_json({"type": "error", "text": "Too many active sessions from your IP. Please close some tabs."})
-        await websocket.close()
-        active_connections[client_host] -= 1
-        return
-
+async def websocket_endpoint(websocket: WebSocket, session_id: str = Query(None), device_id: str = Query(...)):
     await websocket.accept()
+
+    # Replace existing connection for same device
+    old_ws = active_connections.get(device_id)
+    if old_ws:
+        try:
+            await old_ws.close(code=4000)
+        except:
+            pass
+
+    active_connections[device_id] = websocket
     
     # Initialize session service first
     session_service = SessionService()
@@ -385,11 +385,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = Query(None)
                             await stt_callback(clean_text, is_final=True)
                     
     except WebSocketDisconnect:
-        logger.info("Client disconnected")
+        logger.info(f"Client disconnected: {device_id}")
     except Exception as e:
         logger.error(f"WebSocket Error: {e}")
     finally:
-        active_connections[client_host] = max(0, active_connections.get(client_host, 1) - 1)
+        if active_connections.get(device_id) == websocket:
+            del active_connections[device_id]
+            
         if stt_service:
             await stt_service.stop()
         await session_service.disconnect()

@@ -170,7 +170,7 @@ const App = () => {
 
       // Use environment variable or fallback to localhost
       const baseUrl = WS_URL;
-      const wsUrl = `${baseUrl}?session_id=${currentSessionId}`;
+      const wsUrl = `${baseUrl}?session_id=${currentSessionId}&device_id=${deviceId}`;
       const socket = new WebSocket(wsUrl);
       socket.binaryType = 'arraybuffer';
 
@@ -265,7 +265,7 @@ const App = () => {
     };
 
     return connectWebSocketImpl();
-  }, [currentSessionId, playChunk]);
+  }, [currentSessionId, playChunk, deviceId]);
 
   useEffect(() => {
     if (!currentSessionId) return;
